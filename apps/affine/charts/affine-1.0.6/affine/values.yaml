@@ -1,0 +1,238 @@
+## Default values for AFFiNE
+
+## @section Image parameters
+
+## @param image.repository The Docker repository to pull the image from.
+## @param image.tag The image tag to use.
+## @param image.imagePullPolicy The logic of image pulling.
+##
+image:
+  repository: ghcr.io/toeverything/affine
+  tag: "0.25.7"
+  imagePullPolicy: IfNotPresent
+
+## @section Deployment parameters
+
+## @param replicaCount The number of replicas to deploy.
+## @param updateStrategy The update strategy for the deployment.
+##
+replicaCount: 1
+updateStrategy:
+  type: Recreate
+
+## @section Pod spec parameters
+
+## @param resources If specified, it sets the resource requests and limits for the pod.
+## @param nodeSelector Node selector for pod placement (empty object = no node selector).
+## @param affinity Pod affinity configuration.
+## @param tolerations Pod tolerations configuration.
+## @param securityContext Security context for the pod.
+##
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "250m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
+nodeSelector:
+  node-role.kubernetes.io/worker: "worker"
+affinity: {}
+tolerations: []
+securityContext: {}
+
+## @section Service parameters
+
+## @param service.type The Kubernetes service type.
+## @param service.port The service port.
+## @param service.targetPort The container port to target.
+##
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3010
+
+## @section Ingress parameters
+
+## @param ingress.enabled Enable ingress.
+## @param ingress.className Ingress class name.
+## @param ingress.annotations Ingress annotations.
+## @param ingress.hosts List of hosts for the ingress.
+## @param ingress.tls TLS configuration.
+##
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: affine.example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+## @section Storage parameters
+
+## @param persistence.enabled Enable persistent volume claims.
+## @param persistence.storageClass Storage class for the PVCs (empty string = use cluster default).
+## @param persistence.volumes Volume configurations (storage, config).
+##
+persistence:
+  enabled: true
+  storageClass: "longhorn"
+  volumes:
+    storage:
+      enabled: true
+      size: 10Gi
+      accessModes:
+        - ReadWriteOnce
+    config:
+      enabled: true
+      size: 1Gi
+      accessModes:
+        - ReadWriteOnce
+
+## @section Application-specific parameters
+
+## @section AFFiNE Server Configuration
+
+## @param affine.server.https Enable HTTPS for the server.
+## @param affine.server.host The hostname for the server.
+## @param affine.server.port The port for the server.
+## @param affine.server.externalUrl The external URL for the server.
+## @param affine.indexer.enabled Enable the indexer service.
+##
+affine:
+  server:
+    https: true
+    host: "affine.example.com"
+    port: 3010
+    externalUrl: "https://affine.example.com"
+  indexer:
+    enabled: false
+
+## @section External PostgreSQL Configuration
+
+## Prerequisites:
+## 1. Database must exist: CREATE DATABASE affine;
+## 2. Enable pgvector extension: CREATE EXTENSION IF NOT EXISTS vector;
+## 3. Create secret with password: kubectl create secret generic affine-db-secret --from-literal=password=YOUR_PASSWORD -n affine
+##
+## @param database.type Database type (external or internal).
+## @param database.host PostgreSQL host address.
+## @param database.port PostgreSQL port.
+## @param database.name Database name.
+## @param database.username Database username.
+## @param database.existingSecret The name of an existing secret containing the database password.
+## @param database.existingSecretPasswordKey The key in the secret containing the password.
+##
+database:
+  type: external
+  host: "postgresql.postgresql.svc.cluster.local"
+  port: 5432
+  name: "affine"
+  username: "affine"
+  existingSecret: "affine-db-secret"
+  existingSecretPasswordKey: "password"
+
+## @section External Valkey/Redis Configuration
+
+## Prerequisites:
+## 1. Create secret with password: kubectl create secret generic affine-redis-secret --from-literal=password=YOUR_PASSWORD -n affine
+##
+## @param redis.type Redis type (external or internal).
+## @param redis.host Valkey/Redis host address.
+## @param redis.port Valkey/Redis port.
+## @param redis.username Redis username (optional, leave empty if not using ACL).
+## @param redis.database Redis database number (AFFiNE will use databases 0-4).
+## @param redis.existingSecret The name of an existing secret containing the Redis password.
+## @param redis.existingSecretPasswordKey The key in the secret containing the password.
+##
+redis:
+  type: external
+  host: "valkey-primary.valkey.svc.cluster.local"
+  port: 6379
+  username: "" # Optional: Redis username (leave empty if not using ACL)
+  database: 0 # AFFiNE will use databases 0-4
+  existingSecret: "affine-redis-secret"
+  existingSecretPasswordKey: "password"
+
+## @section Email Configuration
+
+## Prerequisites:
+## 1. Create sealed secret with user and password keys
+##
+## @param email.enabled Enable email functionality.
+## @param email.host SMTP host address.
+## @param email.port SMTP port.
+## @param email.sender Email sender name.
+## @param email.serverName Server name for email.
+## @param email.ignoreTls Ignore TLS certificate validation (required: container missing root CA certificates).
+## @param email.existingSecret The name of an existing secret containing email credentials.
+## @param email.existingSecretUserKey The key in the secret containing the username.
+## @param email.existingSecretPasswordKey The key in the secret containing the password.
+##
+email:
+  enabled: true
+  host: "smtp.gmail.com"
+  port: 465
+  sender: "AFFiNE Self Hosted"
+  serverName: "affine.example.com"
+  ignoreTls: false # Required: container missing root CA certificates
+  existingSecret: "affine-email-secret"
+  existingSecretUserKey: "user"
+  existingSecretPasswordKey: "password" # App Password for Gmail
+
+## @section Migration Job Configuration
+
+## Runs database migrations via separate Job resource before deployment (ArgoCD sync wave 1).
+## The Job runs once per deployment/upgrade, separate from the main application pods.
+##
+## @param migration.enabled Enable migration job (runs database migrations via separate Job resource before deployment).
+## @param migration.ttlSecondsAfterFinished Auto-cleanup time for the job after completion.
+## @param migration.backoffLimit Maximum number of retries for the migration job.
+## @param migration.resources Resource requests and limits for the migration job.
+##
+migration:
+  enabled: true
+  ttlSecondsAfterFinished: 3600 # Auto-cleanup after 1 hour
+  backoffLimit: 3
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+## @section Health Probe parameters
+
+## @param probes.liveness Liveness probe configuration.
+## @param probes.readiness Readiness probe configuration.
+## @param probes.startup Startup probe configuration.
+##
+probes:
+  liveness:
+    enabled: true
+    httpGetPath: /
+    httpGetPort: 3010
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    failureThreshold: 5
+    timeoutSeconds: 10
+  readiness:
+    enabled: true
+    httpGetPath: /
+    httpGetPort: 3010
+    initialDelaySeconds: 15
+    periodSeconds: 15
+    failureThreshold: 5
+    timeoutSeconds: 10
+  startup:
+    enabled: true
+    httpGetPath: /
+    httpGetPort: 3010
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    failureThreshold: 30
+    timeoutSeconds: 10

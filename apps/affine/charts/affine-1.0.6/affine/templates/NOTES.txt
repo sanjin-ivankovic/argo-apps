@@ -1,0 +1,108 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+=============================================================================
+AFFiNE has been deployed!
+=============================================================================
+
+1. Get the application URL:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  http{{ if $.Values.affine.server.https }}s{{ end }}://{{ $host.host }}{{ $.Values.affine.server.subPath }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "affine.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch the status by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "affine.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "affine.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  echo "AFFiNE is available at: {{ include "affine.externalUrl" . }}"
+  echo ""
+  echo "To access it locally, run:"
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "affine.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 3010:3010
+  echo "Visit http://127.0.0.1:3010 to use AFFiNE"
+{{- end }}
+
+2. Check deployment status:
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "affine.name" . }}
+
+3. View application logs:
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "affine.name" . }} -f
+
+{{- if .Values.migration.enabled }}
+
+4. Migration job status:
+  The pre-deployment migration job has run. Check its status with:
+  kubectl get jobs -n {{ .Release.Namespace }} {{ include "affine.fullname" . }}-migration
+{{- end }}
+
+{{- if eq .Values.database.type "external" }}
+
+=============================================================================
+EXTERNAL DATABASE CONFIGURATION
+=============================================================================
+
+You are using an external PostgreSQL database.
+
+Database: {{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}
+Username: {{ .Values.database.username }}
+
+Make sure:
+- The database '{{ .Values.database.name }}' exists
+- The pgvector extension is enabled: CREATE EXTENSION IF NOT EXISTS vector;
+- The secret '{{ .Values.database.existingSecret }}' contains the password
+{{- end }}
+
+{{- if eq .Values.redis.type "external" }}
+
+=============================================================================
+EXTERNAL REDIS/VALKEY CONFIGURATION
+=============================================================================
+
+You are using an external Redis/Valkey instance.
+
+Host: {{ .Values.redis.host }}:{{ .Values.redis.port }}
+Database: {{ .Values.redis.database }} (AFFiNE uses databases {{ .Values.redis.database }}-{{ add .Values.redis.database 4 }})
+
+Make sure the secret '{{ .Values.redis.existingSecret }}' contains the password.
+{{- end }}
+
+{{- if .Values.email.enabled }}
+
+=============================================================================
+EMAIL CONFIGURATION
+=============================================================================
+
+Email functionality is enabled.
+
+SMTP Server: {{ .Values.email.host }}:{{ .Values.email.port }}
+Sender: {{ .Values.email.sender }}
+
+For Gmail and similar services, ensure you're using an App Password.
+{{- end }}
+
+=============================================================================
+TROUBLESHOOTING
+=============================================================================
+
+If the pod is not starting:
+1. Check events: kubectl describe pod -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "affine.name" . }}
+2. Check logs: kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "affine.name" . }}
+3. Verify PVCs are bound: kubectl get pvc -n {{ .Release.Namespace }}
+4. Verify database connectivity
+5. Verify Redis connectivity
+
+Documentation: https://docs.affine.pro/self-host-affine
+
+=============================================================================

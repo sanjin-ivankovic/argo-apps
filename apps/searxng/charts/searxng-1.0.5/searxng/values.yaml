@@ -1,0 +1,115 @@
+## Default values for SearXNG
+
+## @section Image parameters
+
+## @param image.repository The Docker repository to pull the image from.
+## @param image.tag The image tag to use.
+## @param image.imagePullPolicy The logic of image pulling.
+##
+image:
+  repository: searxng/searxng
+  tag: "2025.12.30-a5c946a32"
+  imagePullPolicy: IfNotPresent
+
+## @section Deployment parameters
+
+## @param replicaCount The number of replicas to deploy.
+## @param updateStrategy The update strategy for the deployment.
+##
+replicaCount: 1
+# updateStrategy: If not set (null) and persistence is enabled, defaults to RollingUpdate with maxSurge: 0
+# This ensures old pod terminates before new one starts (required for ReadWriteOnce PVCs)
+# To override, uncomment and customize:
+# updateStrategy:
+#   type: RollingUpdate
+#   rollingUpdate:
+#     maxSurge: 0
+#     maxUnavailable: 1
+# Or use Recreate strategy for zero-downtime tolerance:
+# updateStrategy:
+#   type: Recreate
+updateStrategy: null
+
+## @section Pod spec parameters
+
+## @param resources If specified, it sets the resource requests and limits for the pod.
+## @param nodeSelector Node selector for pod placement (empty object = no node selector).
+## @param affinity Pod affinity configuration.
+## @param tolerations Pod tolerations configuration.
+## @param securityContext Security context for the pod.
+##
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+nodeSelector: {}
+affinity: {}
+tolerations: []
+securityContext: {}
+
+## @section Init Container parameters
+
+## @param initContainer.enabled Enable init container for config generation.
+## @param initContainer.image The init container image.
+##
+initContainer:
+  enabled: true
+  image: busybox:1.37
+
+## @section Service parameters
+
+## @param service.type The Kubernetes service type.
+## @param service.port The service port.
+## @param service.targetPort The container port to target.
+##
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+## @section Storage parameters
+
+## @param persistence.enabled Enable persistent volume claim.
+## @param persistence.storageClass Storage class for the PVC (empty string = use cluster default).
+## @param persistence.size Size of the persistent volume.
+## @param persistence.accessModes Access modes for the PVC.
+##
+persistence:
+  enabled: false
+  storageClass: ""
+  size: 1Gi
+  accessModes:
+    - ReadWriteOnce
+
+## @section Application-specific parameters
+
+## @section Environment variables
+
+## @param env.uwsgiWorkers Number of uWSGI workers.
+## @param env.uwsgiThreads Number of uWSGI threads per worker.
+##
+env:
+  uwsgiWorkers: "2"
+  uwsgiThreads: "2"
+
+## @section Secret references
+
+## @param secrets.secretName Name of the secret containing SearXNG configuration.
+## @param secrets.keys Configuration keys in the secret.
+##
+secrets:
+  secretName: searxng-secret
+  keys:
+    baseUrl: base-url
+    secretKey: secret-key
+    valkeyPassword: valkey-password
+
+## @section Redis configuration
+
+## @param redis.url Redis connection URL (without password).
+##
+redis:
+  url: "redis://valkey-master.valkey.svc.cluster.local:6379/0"

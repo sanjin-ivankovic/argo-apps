@@ -1,0 +1,23 @@
+extends: default
+
+rules:
+  line-length:
+    max: 150
+    level: warning
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
+  document-start: disable  # Kubernetes YAML files don't require document start separator
+
+ignore: |
+  # Ignore archived applications
+  _archive/apps/*
+  # Ignore secret files with long base64 encoded values
+  **/secrets/**/*secret*.yaml
+  # Ignore job files with long shell commands
+  **/jobs/*-job.yaml
+  # Ignore generated child pipeline (dynamic, not source-controlled)
+  child-pipeline.yml
+  # Ignore Helm charts (which contain templates that invalid YAML)
+  **/charts/*
+  # Ignore SSH known hosts ConfigMaps (contain long SSH public keys)
+  **/*ssh-known-hosts*.yaml

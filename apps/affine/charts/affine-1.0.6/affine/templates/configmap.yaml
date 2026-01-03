@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "affine.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "affine.labels" . | nindent 4 }}
+data:
+  # This ConfigMap is used to trigger deployment rollout when configuration changes
+  # The checksum of this file is added as an annotation to the deployment
+  affine-version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
+  database-type: {{ .Values.database.type | quote }}
+  redis-type: {{ .Values.redis.type | quote }}

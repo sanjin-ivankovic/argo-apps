@@ -1,0 +1,19 @@
+apiVersion: v2
+appVersion: 2025.12.26
+description: A Helm chart for SearXNG on Kubernetes
+home: https://github.com/searxng/searxng
+keywords:
+- searxng
+- search
+- utilities
+kubeVersion: '>=1.19.0'
+maintainers:
+- email: maintainer@example.com
+  name: maintainer
+  url: https://gitlab.example.com/homelab/helm-charts
+name: searxng
+sources:
+- https://gitlab.example.com/homelab/helm-charts/-/tree/main/charts/searxng
+- https://github.com/searxng/searxng
+type: application
+version: 1.0.3

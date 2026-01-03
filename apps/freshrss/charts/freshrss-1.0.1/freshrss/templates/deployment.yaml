@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "freshrss.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "freshrss.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount | int }}
+  selector:
+    matchLabels:
+      {{- include "freshrss.selectorLabels" . | nindent 6 }}
+  {{- with .Values.updateStrategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "freshrss.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: TZ
+              value: {{ .Values.env.timeZone | quote }}
+            - name: CRON_MIN
+              value: {{ .Values.env.cronMin | quote }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            {{- if .Values.persistence.volumes.data.enabled }}
+            - name: freshrss-data
+              mountPath: /var/www/FreshRSS/data
+            {{- end }}
+            {{- if .Values.persistence.volumes.extensions.enabled }}
+            - name: freshrss-extensions
+              mountPath: /var/www/FreshRSS/extensions
+            {{- end }}
+            {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.httpGetPath }}
+              port: {{ .Values.probes.liveness.httpGetPort }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.httpGetPath }}
+              port: {{ .Values.probes.readiness.httpGetPort }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+          {{- end }}
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        {{- if .Values.persistence.volumes.data.enabled }}
+        - name: freshrss-data
+          persistentVolumeClaim:
+            claimName: {{ include "freshrss.pvcName" (dict "Release" .Release "Chart" .Chart "Values" .Values "volumeName" "data") }}
+        {{- end }}
+        {{- if .Values.persistence.volumes.extensions.enabled }}
+        - name: freshrss-extensions
+          persistentVolumeClaim:
+            claimName: {{ include "freshrss.pvcName" (dict "Release" .Release "Chart" .Chart "Values" .Values "volumeName" "extensions") }}
+        {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

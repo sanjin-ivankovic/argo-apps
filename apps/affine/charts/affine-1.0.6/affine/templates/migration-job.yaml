@@ -1,0 +1,113 @@
+{{- if .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "affine.fullname" . }}-migration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "affine.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: {{ .Values.migration.ttlSecondsAfterFinished | default 3600 }}
+  backoffLimit: {{ .Values.migration.backoffLimit | default 3 }}
+  template:
+    metadata:
+      labels:
+        {{- include "affine.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migration
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.imagePullPolicy }}
+          command:
+            - node
+            - ./scripts/self-host-predeploy
+          env:
+            # Server Configuration
+            - name: AFFINE_SERVER_HTTPS
+              value: {{ .Values.affine.server.https | quote }}
+            - name: AFFINE_SERVER_HOST
+              value: {{ .Values.affine.server.host | quote }}
+            - name: AFFINE_SERVER_PORT
+              value: {{ .Values.affine.server.port | quote }}
+            - name: AFFINE_SERVER_EXTERNAL_URL
+              value: {{ .Values.affine.server.externalUrl | quote }}
+            - name: NODE_ENV
+              value: "production"
+            - name: AFFINE_ENV
+              value: "production"
+            - name: AFFINE_INDEXER_ENABLED
+              value: {{ .Values.affine.indexer.enabled | quote }}
+
+            # Database Configuration
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.database.existingSecret }}
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.existingSecretPasswordKey }}
+                  {{- else }}
+                  name: {{ include "affine.fullname" . }}-db-secret
+                  key: password
+                  {{- end }}
+            - name: DATABASE_URL
+              value: {{ include "affine.databaseUrl" . | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.database.name | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.database.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.database.existingSecret }}
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.existingSecretPasswordKey }}
+                  {{- else }}
+                  name: {{ include "affine.fullname" . }}-db-secret
+                  key: password
+                  {{- end }}
+
+            # Redis Configuration
+            - name: REDIS_SERVER_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: REDIS_SERVER_PORT
+              value: {{ .Values.redis.port | quote }}
+            {{- if .Values.redis.username }}
+            - name: REDIS_SERVER_USER
+              value: {{ .Values.redis.username | quote }}
+            {{- end }}
+            - name: REDIS_SERVER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.redis.existingSecret }}
+                  name: {{ .Values.redis.existingSecret }}
+                  key: {{ .Values.redis.existingSecretPasswordKey }}
+                  {{- else }}
+                  name: {{ include "affine.fullname" . }}-redis-secret
+                  key: password
+                  {{- end }}
+            - name: REDIS_SERVER_DATABASE
+              value: {{ .Values.redis.database | quote }}
+
+          {{- with .Values.migration.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

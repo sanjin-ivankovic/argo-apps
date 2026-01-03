@@ -1,0 +1,73 @@
+# IDE and Editor files
+.idea/
+*.swp
+*.swo
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Backup and temporary files
+*.bak
+*.backup
+*.old
+*.tmp
+*.temp
+*.orig
+*.save
+*~
+
+# Log files
+*.log
+logs/
+*.log.*
+
+# Build artifacts and generated files
+dist/
+build/
+target/
+*.pyc
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.kustomize-builds/
+
+# Kubernetes temporary files
+*.kubeconfig.local
+kubeconfig.local
+*.kubeconfig.bak
+
+# Secret management (unencrypted secrets - SealedSecrets should be committed)
+# Note: SealedSecret YAML files (*-secret.yaml) should be committed
+*.env.local
+*.env.*.local
+secrets.yaml
+secrets.yml
+unencrypted-secrets/
+*.key
+*.pem
+*.crt
+!*.crt.yaml
+
+# Local test files
+test-local/
+local-test/
+*.local.yaml
+*.local.yml
+
+# Sanitizer reports
+tools/sanitize/reports
+
+# Archived applications and scripts (not for public repo)
+_archive/

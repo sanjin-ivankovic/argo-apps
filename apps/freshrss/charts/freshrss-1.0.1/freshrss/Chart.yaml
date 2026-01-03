@@ -1,0 +1,19 @@
+apiVersion: v2
+appVersion: 1.27.1
+description: A Helm chart for FreshRSS, a self-hosted RSS feed aggregator
+home: https://freshrss.org/
+keywords:
+- freshrss
+- rss
+- aggregator
+kubeVersion: '>=1.19.0'
+maintainers:
+- email: maintainer@example.com
+  name: maintainer
+  url: https://gitlab.example.com/homelab/helm-charts
+name: freshrss
+sources:
+- https://gitlab.example.com/homelab/helm-charts/-/tree/main/charts/freshrss
+- https://github.com/FreshRSS/FreshRSS
+type: application
+version: 1.0.1

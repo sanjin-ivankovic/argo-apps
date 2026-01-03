@@ -1,0 +1,205 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "affine.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "affine.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"  # Deploy after migration job (wave 1)
+spec:
+  replicas: {{ .Values.replicaCount | int }}
+  selector:
+    matchLabels:
+      {{- include "affine.selectorLabels" . | nindent 6 }}
+  {{- with .Values.updateStrategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "affine.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          env:
+            # Server Configuration
+            - name: NODE_ENV
+              value: "production"
+            - name: AFFINE_SERVER_PORT
+              value: {{ .Values.affine.server.port | quote }}
+            - name: AFFINE_SERVER_HOST
+              value: {{ .Values.affine.server.host | quote }}
+            - name: AFFINE_SERVER_HTTPS
+              value: {{ .Values.affine.server.https | quote }}
+            {{- if .Values.affine.server.subPath }}
+            - name: AFFINE_SERVER_SUB_PATH
+              value: {{ .Values.affine.server.subPath | quote }}
+            {{- end }}
+            - name: AFFINE_SERVER_EXTERNAL_URL
+              value: {{ include "affine.externalUrl" . | quote }}
+            - name: AFFINE_INDEXER_ENABLED
+              value: {{ .Values.affine.indexer.enabled | quote }}
+            {{- if .Values.affine.privateKey }}
+            - name: AFFINE_PRIVATE_KEY
+              value: {{ .Values.affine.privateKey | quote }}
+            {{- end }}
+
+            # Database Configuration
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.database.existingSecret }}
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.existingSecretPasswordKey }}
+                  {{- else }}
+                  name: {{ include "affine.fullname" . }}-db-secret
+                  key: password
+                  {{- end }}
+            - name: DATABASE_URL
+              value: {{ include "affine.databaseUrl" . | quote }}
+
+            # Redis Configuration
+            - name: REDIS_SERVER_HOST
+              value: {{ include "affine.redisHost" . | quote }}
+            - name: REDIS_SERVER_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: REDIS_SERVER_DATABASE
+              value: {{ .Values.redis.database | quote }}
+            {{- if .Values.redis.username }}
+            - name: REDIS_SERVER_USERNAME
+              value: {{ .Values.redis.username | quote }}
+            {{- end }}
+            {{- if or .Values.redis.existingSecret (eq .Values.redis.type "external") }}
+            - name: REDIS_SERVER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.redis.existingSecret }}
+                  name: {{ .Values.redis.existingSecret }}
+                  key: {{ .Values.redis.existingSecretPasswordKey }}
+                  {{- else }}
+                  name: {{ include "affine.fullname" . }}-redis-secret
+                  key: password
+                  {{- end }}
+            {{- end }}
+
+            # Email Configuration (Optional)
+            {{- if .Values.email.enabled }}
+            - name: MAILER_HOST
+              value: {{ .Values.email.host | quote }}
+            - name: MAILER_PORT
+              value: {{ .Values.email.port | quote }}
+            - name: MAILER_USER
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.email.existingSecret }}
+                  name: {{ .Values.email.existingSecret }}
+                  key: {{ .Values.email.existingSecretUserKey | default "user" }}
+                  {{- else }}
+                  name: {{ include "affine.fullname" . }}-email-secret
+                  key: user
+                  {{- end }}
+            - name: MAILER_SENDER
+              value: {{ .Values.email.sender | quote }}
+            - name: MAILER_SERVERNAME
+              value: {{ .Values.email.serverName | quote }}
+            - name: MAILER_IGNORE_TLS
+              value: {{ .Values.email.ignoreTls | quote }}
+            - name: MAILER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.email.existingSecret }}
+                  name: {{ .Values.email.existingSecret }}
+                  key: {{ .Values.email.existingSecretPasswordKey | default "password" }}
+                  {{- else }}
+                  name: {{ include "affine.fullname" . }}-email-secret
+                  key: password
+                  {{- end }}
+            {{- end }}
+
+            # Storage Paths
+            - name: AFFINE_CONFIG_PATH
+              value: /root/.affine/config
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            {{- if .Values.persistence.volumes.storage.enabled }}
+            - name: affine-storage
+              mountPath: /root/.affine/storage
+            {{- end }}
+            {{- if .Values.persistence.volumes.config.enabled }}
+            - name: affine-config
+              mountPath: /root/.affine/config
+            {{- end }}
+            {{- end }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.startup.httpGetPath }}
+              port: {{ .Values.probes.startup.httpGetPort }}
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+          {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.httpGetPath }}
+              port: {{ .Values.probes.liveness.httpGetPort }}
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.httpGetPath }}
+              port: {{ .Values.probes.readiness.httpGetPort }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+          {{- end }}
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        {{- if .Values.persistence.volumes.storage.enabled }}
+        - name: affine-storage
+          persistentVolumeClaim:
+            claimName: {{ include "affine.pvcName" (dict "Release" .Release "Chart" .Chart "Values" .Values "volumeName" "storage") }}
+        {{- end }}
+        {{- if .Values.persistence.volumes.config.enabled }}
+        - name: affine-config
+          persistentVolumeClaim:
+            claimName: {{ include "affine.pvcName" (dict "Release" .Release "Chart" .Chart "Values" .Values "volumeName" "config") }}
+        {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

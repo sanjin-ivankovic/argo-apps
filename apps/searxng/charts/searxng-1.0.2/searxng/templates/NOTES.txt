@@ -1,0 +1,16 @@
+1. Get the application URL by running these commands:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ .Release.Name }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  Visit http://127.0.0.1:{{ .Values.service.port }}
+
+2. Check the deployment status:
+  kubectl --namespace {{ .Release.Namespace }} get deployment {{ .Release.Name }}
+
+3. View logs:
+  kubectl --namespace {{ .Release.Namespace }} logs -l app={{ .Release.Name }}
+
+{{- if .Values.persistence.enabled }}
+4. Check persistent volume claim:
+  kubectl --namespace {{ .Release.Namespace }} get pvc {{ include "searxng.pvcName" . }}
+{{- end }}
+
+Note: IngressRoute and Secrets are managed separately via Kustomize for better flexibility.

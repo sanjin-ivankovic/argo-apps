@@ -1,0 +1,497 @@
+---
+stages:
+  - build
+  - lint
+  - renovate
+  - validate
+  - security
+  - publish
+
+variables:
+  # Docker images
+  # renovate: datasource=docker depName=docker versioning=docker
+  DOCKER_VERSION: "29.1.3"
+  CI_IMAGE: "${CI_REGISTRY_IMAGE}/ci:latest"
+
+  # Tool versions (tracked by Renovate)
+  # renovate: datasource=docker depName=renovate/renovate
+  RENOVATE_VERSION: "42.65"
+  # renovate: datasource=docker depName=pipelinecomponents/yamllint
+  YAMLLINT_VERSION: "0.35.9"
+  # renovate: datasource=github-releases depName=kubernetes/kubernetes
+  KUBERNETES_VERSION: "1.35.0"
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.*)$
+  KUSTOMIZE_VERSION: "v5.8.0"
+  # renovate: datasource=github-releases depName=yannh/kubeconform
+  KUBECONFORM_VERSION: "v0.7.0"
+
+  # Git configuration for change detection
+  GIT_CLEAN_FLAGS: "none"
+  GIT_DEPTH: 0
+
+# ============================================
+# Templates
+# ============================================
+
+.base-job:
+  image: $CI_IMAGE
+  tags:
+    - shared
+
+.validation-job:
+  extends: .base-job
+  before_script:
+    # Authenticate with GitLab container registry for pulling private Helm charts
+    - |
+      echo "Logging in to container registry..."
+      echo "$CI_REGISTRY_PASSWORD" | helm registry login "${CI_REGISTRY}" \
+        -u "${CI_REGISTRY_USER}" \
+        --password-stdin
+
+# ============================================
+# Build Stage (CI Image)
+# ============================================
+
+.build-image-gitlab:
+  # Don't extend .base-job - use docker:cli directly (can't use CI image to build itself!)
+  image: docker:${DOCKER_VERSION}-cli
+  stage: build
+  tags:
+    - shared
+  before_script:
+    - echo "$CI_JOB_TOKEN" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - cd "$BUILD_CONTEXT"
+    - |
+      docker buildx build \
+        --platform linux/amd64 \
+        --cache-from type=registry,ref="$IMAGE_NAME:buildcache" \
+        --cache-to type=inline \
+        --build-arg DOCKER_VERSION=${DOCKER_VERSION} \
+        --build-arg KUBERNETES_VERSION=${KUBERNETES_VERSION} \
+        --build-arg KUSTOMIZE_VERSION=${KUSTOMIZE_VERSION#v} \
+        --build-arg KUBECONFORM_VERSION=${KUBECONFORM_VERSION#v} \
+        -t "$IMAGE_NAME:latest" \
+        --push \
+        .
+
+build:ci-image:
+  extends: .build-image-gitlab
+  variables:
+    IMAGE_NAME: $CI_REGISTRY_IMAGE/ci
+    BUILD_CONTEXT: docker/ci
+  rules:
+    # Exclude scheduled pipelines (Renovate runs)
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    # Rebuild on Renovate MRs that update CI dependencies
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /^renovate\//'
+      changes:
+        - "docker/ci/**/*"
+        - ".gitlab-ci.yml"
+    # Rebuild on main branch when CI files change
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - "docker/ci/**/*"
+        - ".gitlab-ci.yml"
+    # Manual trigger via web UI
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+# ============================================
+# Lint Stage
+# ============================================
+
+lint:yaml:
+  stage: lint
+  image: pipelinecomponents/yamllint:${YAMLLINT_VERSION}
+  before_script: []
+  script:
+    - yamllint --version
+    - yamllint -c .yamllint -s .
+  rules:
+    # Exclude scheduled pipelines (Renovate runs)
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "**/*.yaml"
+        - "**/*.yml"
+        - ".yamllint"
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - "**/*.yaml"
+        - "**/*.yml"
+        - ".yamllint"
+  tags:
+    - shared
+
+# ============================================
+# Renovate Stage (Dependency Updates)
+# ============================================
+
+renovate:
+  stage: renovate
+  image: renovate/renovate:${RENOVATE_VERSION}
+  before_script:
+    - echo "GitLab API - $CI_API_V4_URL"
+    - echo "Repository - $CI_PROJECT_PATH"
+  variables:
+    # Node.js configuration (suppress all warnings including DEP0169)
+    NODE_NO_WARNINGS: "1"
+
+    # GitLab platform configuration
+    RENOVATE_PLATFORM: "gitlab"
+    RENOVATE_ENDPOINT: $CI_API_V4_URL
+    RENOVATE_AUTODISCOVER: "false"
+    RENOVATE_REPOSITORIES: '["$CI_PROJECT_ID"]'
+
+    # Behavior configuration
+    RENOVATE_REQUIRE_CONFIG: "optional"  # Options: "required", "optional", "ignored"
+    RENOVATE_ONBOARDING: "false"
+
+    # Logging
+    LOG_LEVEL: "info"
+
+    # Authentication tokens
+    # RENOVATE_TOKEN: Inherited from CI/CD variable (GitLab PAT or Project Access Token with 'api' scope)
+    #   - Required for creating MRs/issues
+    #   - Without this, Renovate can only read (using CI_JOB_TOKEN)
+    #   - Must be set in: Settings > CI/CD > Variables > Add Variable
+    # GITHUB_COM_TOKEN: Inherited from CI/CD variable (for fetching GitHub release data)
+
+    # Performance optimization
+    RENOVATE_REPOSITORY_CACHE: "enabled"  # Options: "disabled", "enabled", "reset"
+    RENOVATE_CACHE_DIR: /tmp/renovate/cache
+    RENOVATE_PERSIST_REPO_DATA: "true"
+
+    # Cache configuration
+    RENOVATE_CACHE_PRIVATE_PACKAGES: "true"
+
+    # Private GitLab container registry authentication
+    # Required for accessing private Helm charts from OCI registry
+    RENOVATE_HOST_RULES: |
+      [
+        {
+          "matchHost": "${CI_REGISTRY}",
+          "username": "renovate-bot",
+          "password": "${RENOVATE_TOKEN}",
+          "hostType": "docker"
+        },
+        {
+          "matchHost": "docker.io",
+          "username": "${DOCKER_HUB_USERNAME}",
+          "password": "${DOCKER_HUB_TOKEN}",
+          "hostType": "docker"
+        },
+        {
+          "matchHost": "dhi.io",
+          "username": "${DOCKER_HUB_USERNAME}",
+          "password": "${DOCKER_HUB_TOKEN}",
+          "hostType": "docker"
+        }
+      ]
+
+    # Dry run mode (set to 'full' for testing, leave empty for production)
+    RENOVATE_DRY_RUN: ""  # Options: "extract", "lookup", "full" or "" (to disable)
+
+    # Prevent GitLab Runner from checking out the code (Renovate handles this)
+    GIT_STRATEGY: none
+  script:
+    - renovate $RENOVATE_EXTRA_FLAGS
+  cache:
+    key: "renovate-cache"
+    paths:
+      - /tmp/renovate/cache
+  rules:
+    # Run on Renovate schedule only
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TYPE == "renovate"'
+      when: always
+    # Manual trigger via web UI (with debug logging)
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+      allow_failure: true
+      variables:
+        LOG_LEVEL: "debug"
+        RENOVATE_DRY_RUN: "full"
+  tags:
+    - shared
+  retry:
+    max: 2
+    when:
+      - api_failure
+      - runner_system_failure
+      - stuck_or_timeout_failure
+  timeout: 2 hours
+  allow_failure: true
+
+# ============================================
+# Validate Stage (Dynamic Child Pipeline)
+# ============================================
+
+generate:child-pipeline:
+  stage: validate
+  extends: .base-job
+  script:
+    - python3 scripts/ci/generate-pipeline.py
+    - echo "Generated child pipeline:"
+    - cat child-pipeline.yml
+  artifacts:
+    paths:
+      - child-pipeline.yml
+    expire_in: 1 hour
+  rules:
+    # Exclude scheduled pipelines (Renovate runs)
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "apps/**/*"
+        - "infrastructure/**/*"
+        - "argocd/**/*"
+        - "scripts/ci/**/*"
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - "apps/**/*"
+        - "infrastructure/**/*"
+        - "argocd/**/*"
+        - "scripts/ci/**/*"
+  tags:
+    - shared
+
+trigger:validation:
+  stage: validate
+  trigger:
+    include:
+      - artifact: child-pipeline.yml
+        job: generate:child-pipeline
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  needs:
+    - job: generate:child-pipeline
+      artifacts: true
+  rules:
+    # Exclude scheduled pipelines (Renovate runs)
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "apps/**/*"
+        - "infrastructure/**/*"
+        - "argocd/**/*"
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - "apps/**/*"
+        - "infrastructure/**/*"
+        - "argocd/**/*"
+
+# ============================================
+# Security Stage
+# ============================================
+
+security:scan-secrets:
+  stage: security
+  extends: .base-job
+  script:
+    - chmod +x scripts/ci/scan-secrets.sh
+    - bash scripts/ci/scan-secrets.sh
+  rules:
+    # Exclude scheduled pipelines (Renovate runs)
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "apps/**/*.yaml"
+        - "apps/**/*.yml"
+        - "infrastructure/**/*.yaml"
+        - "infrastructure/**/*.yml"
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - "apps/**/*.yaml"
+        - "apps/**/*.yml"
+        - "infrastructure/**/*.yaml"
+        - "infrastructure/**/*.yml"
+
+security:check-privileges:
+  stage: security
+  extends: .validation-job
+  script:
+    - |
+      echo "=========================================="
+      echo "Checking for Privileged Containers"
+      echo "=========================================="
+
+      FINDINGS=0
+
+      # Build all manifests and check for privileged containers
+      DIRS=$(find apps infrastructure -name 'kustomization.yaml' -exec dirname {} \;)
+
+      for dir in $DIRS; do
+        echo ""
+        echo "Checking: $dir"
+
+        # Build manifests and search for privileged settings
+        MANIFESTS=$(kustomize build "$dir" --enable-helm 2>/dev/null || true)
+
+        if echo "$MANIFESTS" | grep -q "privileged: true"; then
+          echo "⚠️  Found privileged container in: $dir"
+          echo "$MANIFESTS" | grep -B5 -A5 "privileged: true"
+          FINDINGS=$((FINDINGS + 1))
+        fi
+
+        if echo "$MANIFESTS" | grep -q "hostNetwork: true"; then
+          echo "⚠️  Found hostNetwork enabled in: $dir"
+          FINDINGS=$((FINDINGS + 1))
+        fi
+
+        if echo "$MANIFESTS" | grep -q "hostPID: true"; then
+          echo "⚠️  Found hostPID enabled in: $dir"
+          FINDINGS=$((FINDINGS + 1))
+        fi
+      done
+
+      echo ""
+      if [ $FINDINGS -gt 0 ]; then
+        echo "=========================================="
+        echo "Found $FINDINGS security concerns"
+        echo "Review privileged settings and ensure they are necessary"
+        echo "=========================================="
+        # Don't fail the pipeline, just warn
+        exit 0
+      else
+        echo "=========================================="
+        echo "No concerning privilege escalations detected ✓"
+        echo "=========================================="
+      fi
+  rules:
+    # Exclude scheduled pipelines (Renovate runs)
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "apps/**/*"
+        - "infrastructure/**/*"
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - "apps/**/*"
+        - "infrastructure/**/*"
+  allow_failure: true
+
+# ============================================
+# Publish Stage (GitHub Portfolio Sync)
+# ============================================
+
+publish:github-portfolio:
+  stage: publish
+  extends: .base-job
+  before_script:
+    # Configure SSH for GitHub
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    # Copy SSH key from GitLab File variable (variable contains path to temp file)
+    - cp "$GITHUB_SSH_PRIVATE_KEY" ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    # Verify key was copied correctly
+    - |
+      if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_ed25519; then
+        echo "ERROR: SSH key does not appear to be valid"
+        echo "First line of key file:"
+        head -n 1 ~/.ssh/id_ed25519
+        exit 1
+      fi
+      echo "✅ SSH key loaded successfully"
+    - ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+    # Configure Git
+    - git config --global user.name "Maintainer Name"
+    - git config --global user.email "maintainer@example.com"
+  script:
+    - |
+      echo "=========================================="
+      echo "🚀 Publishing to GitHub Portfolio"
+      echo "=========================================="
+      echo ""
+
+      # Run sanitization
+      echo "🧹 Running sanitization..."
+      cd tools/sanitize
+      python3 sanitize_repo.py "${CI_PROJECT_DIR}" --single-commit --verbose
+
+      echo ""
+      echo "=========================================="
+
+      # CRITICAL: Run verification (exits with code 1 if sensitive data found)
+      echo "🔍 Running security verification..."
+      echo ""
+      python3 verify_sanitization.py
+
+      # Only reaches here if verification passed
+      echo ""
+      echo "=========================================="
+      echo "📦 Preparing GitHub push..."
+      echo "=========================================="
+
+      cd "${CI_PROJECT_DIR}_public"
+
+      # Count files
+      FILE_COUNT=$(find . -type f ! -path './.git/*' | wc -l)
+      echo "Files to publish: $FILE_COUNT"
+      echo ""
+
+      # Initialize fresh git repository
+      echo "Initializing git repository..."
+      git init -b main
+      git remote add github "$GITHUB_REPO_URL"
+
+      # Stage all files
+      git add -A
+      STAGED_FILES=$(git diff --cached --numstat | wc -l)
+      echo "Staged files: $STAGED_FILES"
+
+      # Create commit
+      COMMIT_MSG="Update portfolio - $(date '+%Y-%m-%d %H:%M:%S')
+
+      Sanitization verified - no sensitive data detected
+
+      Source: $CI_PROJECT_URL/-/commit/$CI_COMMIT_SHA
+      Pipeline: $CI_PIPELINE_URL
+      Trigger: $CI_PIPELINE_SOURCE"
+
+      git commit -m "$COMMIT_MSG"
+      COMMIT_HASH=$(git rev-parse --short HEAD)
+      echo "Commit: $COMMIT_HASH"
+      echo ""
+
+      # Force push to GitHub
+      echo "🔄 Force pushing to GitHub..."
+      git push github main --force
+
+      echo ""
+      echo "=========================================="
+      echo "✅ Successfully published to GitHub!"
+      echo "=========================================="
+      echo ""
+      echo "📍 View at: https://github.com/maintainer-user/argo-apps"
+      echo ""
+  rules:
+    # Skip if commit message contains [skip publish]
+    - if: '$CI_COMMIT_MESSAGE =~ /\[skip publish\]/'
+      when: never
+
+    # Run on schedule (daily at 4 AM)
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TYPE == "github_sync"'
+      when: always
+
+    # Manual trigger option (via web UI)
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+      allow_failure: true
+  allow_failure: false  # Fail pipeline if verification fails or push errors
+  tags:
+    - shared
+  timeout: 15 minutes
+  artifacts:
+    when: on_failure
+    paths:
+      - tools/sanitize/reports/
+    expire_in: 7 days
