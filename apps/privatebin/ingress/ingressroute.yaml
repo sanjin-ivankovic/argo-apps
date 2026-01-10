@@ -1,0 +1,16 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: privatebin-ingressroute
+  namespace: privatebin
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`privatebin.example.com`)
+      services:
+        - kind: Service
+          name: privatebin
+          port: 80

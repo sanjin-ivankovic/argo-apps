@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
+  template:
+    spec:
+      volumes:
+        - name: helm-registry-config-secret
+          secret:
+            secretName: argocd-helm-registry-config
+        - name: helm-registry-config
+          emptyDir: {}
+        - name: home
+          emptyDir: {}
+      initContainers:
+        - name: copy-helm-config
+          # yamllint disable-line rule:line-length
+          image: quay.io/argoproj/argocd:v3.2.3@sha256:9ab6baab65a6b283044a7d7b7dbe50f589564de9c8898d67c77d84b2b5df46bc
+          command:
+            - sh
+            - -c
+            - |
+              # Copy to /helm-registry-config for HELM_REGISTRY_CONFIG
+              # (for helm commands)
+              cp /helm-registry-config-secret/config.json \
+                /helm-registry-config/config.json
+              chmod 600 /helm-registry-config/config.json
+
+              # Copy to ~/.docker/config.json for kustomize helm integration
+              # Kustomize uses Docker credentials for OCI registry
+              # authentication
+              mkdir -p /home/argocd/.docker
+              cp /helm-registry-config-secret/config.json \
+                /home/argocd/.docker/config.json
+              chmod 600 /home/argocd/.docker/config.json
+          volumeMounts:
+            - name: helm-registry-config-secret
+              mountPath: /helm-registry-config-secret
+              readOnly: true
+            - name: helm-registry-config
+              mountPath: /helm-registry-config
+            - name: home
+              mountPath: /home/argocd
+      containers:
+        - name: argocd-repo-server
+          volumeMounts:
+            - name: helm-registry-config
+              mountPath: /helm-registry-config
+            - name: home
+              mountPath: /home/argocd
+          env:
+            - name: HELM_REGISTRY_CONFIG
+              value: /helm-registry-config/config.json

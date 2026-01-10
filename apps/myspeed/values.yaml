@@ -1,0 +1,22 @@
+---
+# Override default values for myspeed chart
+
+replicaCount: 1
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+nodeSelector:
+  node-role.kubernetes.io/worker: worker
+
+persistence:
+  enabled: true
+  storageClass: longhorn
+  size: 1Gi
+  accessModes:
+    - ReadWriteOnce

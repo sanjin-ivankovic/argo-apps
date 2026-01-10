@@ -1,0 +1,107 @@
+---
+# Kube Prometheus Stack - Minimal Override Configuration
+# Chart: prometheus-community/kube-prometheus-stack
+# Version: 79.2.1
+#
+# This file contains only the necessary overrides from the default chart values.
+# All other settings use chart defaults.
+
+# ============================================================================
+# Grafana Configuration
+# ============================================================================
+
+grafana:
+  # Admin credentials from secret (must be created separately)
+  admin:
+    existingSecret: grafana-admin-secret
+    userKey: admin-user
+    passwordKey: admin-password
+
+  # Disable default ingress (we use Traefik IngressRoute)
+  ingress:
+    enabled: false
+
+  # Persistence for Grafana data
+  persistence:
+    enabled: true
+    type: pvc
+    storageClassName: longhorn
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+
+# ============================================================================
+# Prometheus Configuration
+# ============================================================================
+
+prometheus:
+  # Disable default ingress (we use Traefik IngressRoute)
+  ingress:
+    enabled: false
+
+  # Prometheus server configuration
+  prometheusSpec:
+    # Retention period for metrics
+    retention: 30d
+
+    # Storage configuration
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+    # Scrape all ServiceMonitors and PodMonitors (empty selector = all)
+    serviceMonitorSelector: {}
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+    podMonitorSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+
+    # Scrape all PrometheusRules
+    ruleSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+
+# ============================================================================
+# Alertmanager Configuration
+# ============================================================================
+
+alertmanager:
+  # Disable default ingress (we use Traefik IngressRoute if needed)
+  ingress:
+    enabled: false
+
+  # Alertmanager storage configuration
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+# ============================================================================
+# Prometheus Operator Configuration
+# ============================================================================
+
+prometheusOperator:
+  # Additional namespaces for Prometheus Operator to watch
+  # This allows Prometheus to discover ServiceMonitors and PodMonitors in
+  # other namespaces
+  namespaces:
+    releaseNamespace: true
+    additional:
+      - kube-system
+      - default
+      - gitea
+      - home-assistant
+      - joplin
+      # - paperless-ngx
+      - searxng
+      - postgresql
+      - valkey

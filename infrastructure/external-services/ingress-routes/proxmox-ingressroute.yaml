@@ -1,0 +1,17 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: proxmox-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`proxmox.example.com`)
+      services:
+        - kind: Service
+          name: proxmox
+          port: 8006
+          serversTransport: proxmox-st

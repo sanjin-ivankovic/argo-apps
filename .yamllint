@@ -1,0 +1,56 @@
+---
+yaml-files:
+  - "*.yaml"
+  - "*.yml"
+  - ".yamllint"
+
+rules:
+  anchors: enable
+  braces: enable
+  brackets: enable
+  colons: enable
+  commas: enable
+  comments:
+    level: warning
+    min-spaces-from-content: 1
+  comments-indentation:
+    level: warning
+  document-end: disable
+  document-start:
+    level: warning
+  empty-lines: enable
+  empty-values: disable
+  float-values: disable
+  hyphens: enable
+  indentation: enable
+  key-duplicates: enable
+  key-ordering: disable
+  line-length:
+    level: warning
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+  new-line-at-end-of-file: enable
+  new-lines: enable
+  octal-values: disable
+  quoted-strings: disable
+  trailing-spaces: enable
+  truthy:
+    level: warning
+
+ignore: |
+  # Ignore archived applications
+  _archive/apps/*
+  # Ignore secret files with long base64 encoded values
+  **/secrets/**/*secret*.yaml
+  # Ignore job files with long shell commands
+  **/jobs/*-job.yaml
+  # Ignore generated child pipeline (dynamic, not source-controlled)
+  child-pipeline.yml
+  # Ignore Helm charts (which contain templates that invalid YAML)
+  **/charts/*
+  # Ignore SSH known hosts ConfigMaps (contain long SSH public keys)
+  **/*ssh-known-hosts*.yaml
+  # Ignore Helm values files with long match rules and image tags
+  infrastructure/argocd/kustomization.yaml
+  infrastructure/argocd/patches/argocd-repo-server-deployment-patch.yaml
+  infrastructure/traefik/values.yaml

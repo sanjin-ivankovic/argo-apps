@@ -1,0 +1,16 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: myspeed-ingressroute
+  namespace: myspeed
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`myspeed.example.com`)
+      services:
+        - kind: Service
+          name: myspeed
+          port: 5216

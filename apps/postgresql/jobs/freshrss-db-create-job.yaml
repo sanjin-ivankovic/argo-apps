@@ -1,0 +1,83 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-freshrss-database
+  namespace: postgresql
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: create-database
+          image: bitnami/postgresql:18.1.0
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: postgres-password
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: freshrss-db-secret
+                  key: database
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: freshrss-db-secret
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: freshrss-db-secret
+                  key: password
+            - name: POSTGRESQL_HOST
+              value: "postgresql"
+            - name: POSTGRESQL_PORT
+              value: "5432"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              # Enhanced waiting with timeout
+              echo "Waiting for PostgreSQL at $POSTGRESQL_HOST:$POSTGRESQL_PORT..."
+              timeout=300  # 5 minutes timeout
+              elapsed=0
+
+              until pg_isready -h "$POSTGRESQL_HOST" -p "$POSTGRESQL_PORT" -U postgres; do
+                if [ $elapsed -ge $timeout ]; then
+                  echo "Timeout waiting for PostgreSQL after ${timeout} seconds"
+                  exit 1
+                fi
+                echo "PostgreSQL not ready yet... waiting ($elapsed/${timeout}s)"
+                sleep 5
+                elapsed=$((elapsed + 5))
+              done
+
+              echo "PostgreSQL is ready! Creating database '$DB_NAME' with user '$DB_USER'..."
+
+              # Create database only if it doesn't exist
+              if ! psql -h "$POSTGRESQL_HOST" -p "$POSTGRESQL_PORT" -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1; then
+                echo "Creating database '$DB_NAME'..."
+                psql -h "$POSTGRESQL_HOST" -p "$POSTGRESQL_PORT" -U postgres -c "CREATE DATABASE $DB_NAME;"
+              else
+                echo "Database '$DB_NAME' already exists"
+              fi
+
+              # Create user only if it doesn't exist
+              if ! psql -h "$POSTGRESQL_HOST" -p "$POSTGRESQL_PORT" -U postgres -tc "SELECT 1 FROM pg_user WHERE usename = '$DB_USER'" | grep -q 1; then
+                echo "Creating user '$DB_USER'..."
+                psql -h "$POSTGRESQL_HOST" -p "$POSTGRESQL_PORT" -U postgres -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD';"
+              else
+                echo "User '$DB_USER' already exists"
+              fi
+
+              # Grant privileges (safe to run multiple times)
+              echo "Granting privileges..."
+              psql -h "$POSTGRESQL_HOST" -p "$POSTGRESQL_PORT" -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
+              psql -h "$POSTGRESQL_HOST" -p "$POSTGRESQL_PORT" -U postgres -c "ALTER DATABASE $DB_NAME OWNER TO $DB_USER;"
+
+              echo "Database '$DB_NAME' setup completed successfully!"

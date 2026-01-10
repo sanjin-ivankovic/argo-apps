@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # Enable insecure mode when accessed through ingress with TLS termination
+  # Traefik terminates TLS, so ArgoCD should accept HTTP from the ingress
+  server.insecure: "true"

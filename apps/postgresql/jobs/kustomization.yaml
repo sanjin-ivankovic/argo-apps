@@ -1,0 +1,13 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: postgresql
+
+resources: []
+# Database creation jobs (manual execution)
+# - affine-db-create-job.yaml
+# - delete-db-job.yaml
+# - freshrss-db-create-job.yaml
+# - joplin-db-create-job.yaml
+# - transcribe-db-create-job.yaml

@@ -1,0 +1,6 @@
+---
+## Override values for PrivateBin deployment
+## This file sets persistence.storageClass to match the existing PVC
+
+persistence:
+  storageClass: "longhorn"

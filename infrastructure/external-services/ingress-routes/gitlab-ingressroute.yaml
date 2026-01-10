@@ -1,0 +1,52 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: gitlab-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`gitlab.example.com`)
+      services:
+        - kind: Service
+          name: gitlab
+          port: 80
+          scheme: http
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: gitlab-registry-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`registry.example.com`)
+      services:
+        - kind: Service
+          name: gitlab
+          port: 5050
+          scheme: https
+          serversTransport: gitlab-st
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: gitlab-pages-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`pages.example.com`)
+      services:
+        - kind: Service
+          name: gitlab
+          port: 8090
+          scheme: http

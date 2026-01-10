@@ -1,0 +1,38 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rancher
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+    - post-delete-finalizer.argocd.argoproj.io
+    - post-delete-finalizer.argocd.argoproj.io/cleanup
+spec:
+  project: default
+
+  source:
+    repoURL: ssh://git@gitlab.example.com:2424/homelab/argo-apps.git
+    targetRevision: main
+    path: infrastructure/rancher
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cattle-system
+
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Application
+      jsonPointers:
+        - /metadata/finalizers
+
+  syncPolicy:
+    # Intentionally commented out to avoid automatic sync.
+    # automated:
+    #   prune: true
+    #   selfHeal: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - CreateNamespace=true

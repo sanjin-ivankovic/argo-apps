@@ -1,0 +1,104 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bazarr
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 6767
+      targetPort: 6767
+      name: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notifiarr
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 5454
+      targetPort: 5454
+      name: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: overseerr
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 5055
+      targetPort: 5055
+      name: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plex
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 32400
+      targetPort: 32400
+      name: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prowlarr
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 9696
+      targetPort: 9696
+      name: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qbittorrent
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: radarr
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 7878
+      targetPort: 7878
+      name: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sonarr
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 8989
+      targetPort: 8989
+      name: http
+      protocol: TCP

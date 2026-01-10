@@ -1,0 +1,13 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: unifi
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 8443
+      targetPort: 8443
+      name: https
+      protocol: TCP

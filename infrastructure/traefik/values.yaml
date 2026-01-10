@@ -1,0 +1,289 @@
+---
+# ============================================================================
+# Traefik Configuration
+# Helm Chart: traefik v37.4.0
+# Application: Edge router and ingress controller for Kubernetes
+# ============================================================================
+
+# ============================================================================
+# Image Configuration
+# ============================================================================
+
+image:
+  registry: dhi.io
+  repository: traefik
+  # yamllint disable-line rule:line-length
+  tag: "3.6.6@sha256:390ba05554ac97982a902142d382b4396d1ac2fb8ff3e536af4b9bca0b5c0a88"
+  pullPolicy: IfNotPresent
+
+# ============================================================================
+# Deployment Configuration
+# ============================================================================
+
+deployment:
+  enabled: true
+  kind: Deployment
+  replicas: 2 # High availability with 2 replicas
+  # Pull secret for fetching traefik container image from dhi.io
+  imagePullSecrets:
+    - name: dhi-registry-secret
+
+# Pod Disruption Budget for high availability
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1 # Ensure at least 1 pod available during updates
+
+# Rolling update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1 # Only one pod down at a time
+    maxSurge: 0 # No extra pods during update
+
+# ============================================================================
+# Ingress Class Configuration
+# ============================================================================
+
+ingressClass:
+  enabled: true
+  isDefaultClass: true # Set as default ingress controller
+  name: "" # Use chart default name
+
+# ============================================================================
+# Traefik Dashboard & Health Check
+# ============================================================================
+
+ingressRoute:
+  # Traefik dashboard accessible at https://traefik.example.com/dashboard/
+  dashboard:
+    enabled: true
+    matchRule: |
+      Host(`traefik.example.com`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))
+    entryPoints: ["websecure"]
+
+  # Kubernetes liveness/readiness probes
+  healthcheck:
+    enabled: true
+
+# ============================================================================
+# Providers Configuration
+# ============================================================================
+
+providers:
+  kubernetesCRD:
+    enabled: true
+    # Allow IngressRoutes to reference services in other namespaces
+    allowCrossNamespace: true
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+
+# logs:
+#   general:
+#     format: json
+#     level: DEBUG  # Uncomment for troubleshooting
+
+# ============================================================================
+# Global Configuration
+# ============================================================================
+
+global:
+  checkNewVersion: false # Disable version check
+  sendAnonymousUsage: false # Disable telemetry
+
+# Additional CLI arguments
+additionalArguments:
+  - "--api.disabledashboardad=true" # Disable dashboard ads
+
+# ============================================================================
+# Entry Points Configuration
+# ============================================================================
+
+ports:
+  # Traefik dashboard/API port (internal)
+  traefik:
+    port: 8080
+
+  # HTTP entry point (redirects to HTTPS)
+  web:
+    port: 80
+    redirections:
+      entryPoint:
+        to: websecure
+        scheme: https
+
+  # HTTPS entry point (primary)
+  websecure:
+    port: 443
+    http:
+      encodedCharacters:
+        allowEncodedSlash: true
+    tls:
+      enabled: true
+    middlewares:
+      # Apply rate limiting and security headers
+      - traefik-chain-no-auth@kubernetescrd
+
+  # SSH entry point for GitLab
+  gitlab-ssh:
+    port: 2424
+    expose:
+      default: true
+    exposedPort: 2424
+    protocol: TCP
+
+# ============================================================================
+# Service Configuration
+# ============================================================================
+
+service:
+  enabled: true
+  type: LoadBalancer
+  spec:
+    loadBalancerIP: "10.40.0.67" # Static IP from MetalLB pool
+
+# ============================================================================
+# Persistence Configuration
+# ============================================================================
+
+persistence:
+  enabled: false # Not required for stateless operation
+  name: data
+  accessMode: ReadWriteOnce
+  size: 128Mi
+  storageClass: "longhorn"
+  volumeName: ""
+  path: /data
+
+# ============================================================================
+# Custom Kubernetes Resources (CRDs)
+# ============================================================================
+
+extraObjects:
+  # --------------------------------------------------------------------------
+  # TLS Configuration
+  # --------------------------------------------------------------------------
+
+  # TLS Options - Modern cipher suites and TLS 1.2+ only
+  - apiVersion: traefik.io/v1alpha1
+    kind: TLSOption
+    metadata:
+      name: tls-opts
+      namespace: traefik
+    spec:
+      minVersion: VersionTLS12 # TLS 1.2 minimum for security
+      cipherSuites:
+        # TLS 1.2 cipher suites
+        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+        # TLS 1.3 cipher suites
+        - TLS_AES_128_GCM_SHA256
+        - TLS_AES_256_GCM_SHA384
+        - TLS_CHACHA20_POLY1305_SHA256
+        # Fallback indicator
+        - TLS_FALLBACK_SCSV
+      curvePreferences:
+        - CurveP521
+        - CurveP384
+      sniStrict: true # Require valid SNI
+
+  # TLS Store - Default wildcard certificate for *.example.com
+  - apiVersion: traefik.io/v1alpha1
+    kind: TLSStore
+    metadata:
+      name: default
+      namespace: traefik
+    spec:
+      defaultCertificate:
+        secretName: example-com-wildcard-tls # Managed by cert-manager
+
+  # --------------------------------------------------------------------------
+  # Middleware Chain - No Authentication Required
+  # --------------------------------------------------------------------------
+
+  # Chain middleware combining rate limiting and security headers
+  - apiVersion: traefik.io/v1alpha1
+    kind: Middleware
+    metadata:
+      name: chain-no-auth
+      namespace: traefik
+    spec:
+      chain:
+        middlewares:
+          - name: middlewares-rate-limit
+          - name: middlewares-secure-headers
+
+  # --------------------------------------------------------------------------
+  # Rate Limiting Middleware
+  # --------------------------------------------------------------------------
+
+  # Protects against DDoS and abuse
+  - apiVersion: traefik.io/v1alpha1
+    kind: Middleware
+    metadata:
+      name: middlewares-rate-limit
+      namespace: traefik
+    spec:
+      rateLimit:
+        average: 100 # Max 100 requests per second (average)
+        burst: 50 # Allow burst of 50 requests
+
+  # --------------------------------------------------------------------------
+  # Security Headers Middleware
+  # --------------------------------------------------------------------------
+
+  # Applies security headers to all responses
+  - apiVersion: traefik.io/v1alpha1
+    kind: Middleware
+    metadata:
+      name: middlewares-secure-headers
+      namespace: traefik
+    spec:
+      headers:
+        # CORS Configuration
+        accessControlAllowMethods:
+          - GET
+          - OPTIONS
+          - PUT
+        accessControlMaxAge: 100
+
+        # XSS Protection
+        browserXssFilter: true
+
+        # MIME-type sniffing prevention
+        contentTypeNosniff: true
+
+        # Clickjacking protection
+        customFrameOptionsValue: SAMEORIGIN
+
+        # Custom request headers
+        customRequestHeaders:
+          X-Forwarded-Proto: https # Force HTTPS in backend
+
+        # Custom response headers
+        customResponseHeaders:
+          X-Robots-Tag: >
+            none,noindex,nofollow,noarchive,nosnippet,notranslate,noimageindex
+          server: "" # Hide server version
+
+        # HSTS (HTTP Strict Transport Security)
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 63072000 # 2 years
+
+        # Forwarded host headers
+        hostsProxyHeaders:
+          - X-Forwarded-Host
+
+        # Permissions policy (disable intrusive features)
+        permissionsPolicy: >
+          camera=(), microphone=(), geolocation=(), payment=(), usb=(), vr=()
+
+        # Referrer policy
+        referrerPolicy: same-origin

@@ -1,0 +1,13 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: duplicati
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 8200
+      targetPort: 8200
+      name: http
+      protocol: TCP

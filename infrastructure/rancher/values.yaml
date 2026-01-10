@@ -1,0 +1,35 @@
+---
+# ============================================================================
+# Rancher Configuration
+# Helm Chart: rancher v2.12.3
+# Application: Kubernetes management platform
+# Namespace: cattle-system
+# ============================================================================
+
+# ============================================================================
+# Hostname Configuration
+# ============================================================================
+
+# Rancher web interface hostname
+hostname: "rancher.example.com"
+
+# ============================================================================
+# Ingress Configuration
+# ============================================================================
+
+ingress:
+  enabled: false # Using custom Traefik IngressRoute instead
+
+# ============================================================================
+# Deployment Configuration
+# ============================================================================
+
+# Single replica deployment (sufficient for homelab)
+replicas: 1
+
+# ============================================================================
+# TLS Configuration
+# ============================================================================
+
+# TLS termination handled by Traefik (external to Rancher)
+tls: external

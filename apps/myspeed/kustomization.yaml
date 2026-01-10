@@ -1,0 +1,16 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: myspeed
+
+helmCharts:
+  - name: myspeed
+    repo: oci://registry.example.com/homelab/helm-charts
+    version: 1.0.0
+    releaseName: myspeed
+    namespace: myspeed
+    valuesFile: values.yaml
+
+resources:
+  - ingress

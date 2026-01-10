@@ -1,0 +1,31 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: ssh://git@gitlab.example.com:2424/homelab/argo-apps.git
+    targetRevision: main
+    path: infrastructure/monitoring
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    # Intentionally commented out to avoid automatic sync.
+    # automated:
+    #   prune: true
+    #   selfHeal: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - ServerSideApply=true # Required for large CRDs (kube-prometheus-stack)
+      - CreateNamespace=true

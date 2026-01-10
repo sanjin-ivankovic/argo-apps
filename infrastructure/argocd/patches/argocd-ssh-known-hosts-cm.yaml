@@ -1,0 +1,11 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-ssh-known-hosts-cm
+  namespace: argocd
+data:
+  ssh_known_hosts: |
+    [gitlab.example.com]:2424 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCoGZEvVvihoFZwcYUdEf1VDEEGWrVOmJP/X5YtyGKCoVN9XEZtzElS8C9MKfT9S3ii9MOlMdfSZ7j5iaKJRI2d2NukxKnvEIgUtkzB/q9HLxzL8JJfuMRbvbt9CEsrPWRyZb/hE4zob6lbcs7YcW8T3xTRccHUl3KNA9na+h7RQN8rfRdIuVLWFRe6WeVR0Ex8OnrvLP5qWGPbIh/48V2RI+iNGJ8AQij4UvGb3YYNOnxHC/qMyrel1N+FwPsuWz5s2shRd3FyxoN/eTb6eoFD3esOTuME7y6oE+Nry+mDt455HNqZ1JRI52quePiLbjq/XiHNtGfWTaXjL/Y6tbu2uv2uNbo0UeR0jCyF9vdTAU/eRmtATg10X7hNXnQQpAgB1jQXLGyXNgTM5758LsMQdFxZkykgxh26rWjOnQZ/ZfJTQaqlbKoQFkHj2Q0cnCm/22pHxPjDpjJnYNlWb5Kb7GrLIxMwBZOXw9F2NttFFFi6/aaJ3DKbyBMQHDQWkjs=
+    [gitlab.example.com]:2424 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBAIIIUlgdE6ktlM78dA1WOSEmZ38t84gFOWvVu5fWcfOPUV5jN1yPdSt1v7XjmwqGVGyyj9pDF7zSmznx0qQizk=
+    [gitlab.example.com]:2424 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP1sqA4PqAu7hxc75BJs6fL3KBXAR67fu8O74Lki4gQ0

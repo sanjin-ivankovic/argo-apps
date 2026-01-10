@@ -1,0 +1,70 @@
+# Gitleaks Configuration for Public Portfolio
+# https://github.com/gitleaks/gitleaks
+
+title = "Gitleaks Configuration for Proxmox Infrastructure Repository"
+
+# Extend the base gitleaks configuration
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for common false positives"
+
+# Allowlist for common false positives
+regexes = [
+  # Example values, test credentials, and documentation
+  '''(?i)(example|sample|test|dummy|placeholder|todo|changeme|your-[a-z-]+)''',
+  # UUID/VMID patterns that look like secrets
+  '''[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''',
+  # MAC addresses (not secrets)
+  '''([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})''',
+  # IP addresses (not secrets in infrastructure config)
+  '''\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b''',
+  # Common variable placeholders
+  '''\$\{[A-Z_]+\}''',
+  '''\{\{[a-z_]+\}\}''',
+]
+
+# Allowlist specific paths (regex patterns)
+paths = [
+  # Documentation files with examples
+  '''(README|CLAUDE|CONTRIBUTING)\.md$''',
+  # Terraform variable examples (no actual secrets)
+  '''terraform\.tfvars\.example$''',
+]
+
+# Custom rules for infrastructure-specific patterns
+[[rules]]
+id = "ssh-private-key"
+description = "Detected SSH private key"
+regex = '''-----BEGIN (RSA|OPENSSH|DSA|EC|PGP) PRIVATE KEY-----'''
+tags = ["ssh", "private-key", "security"]
+
+[[rules]]
+id = "proxmox-api-token"
+description = "Detected Proxmox API token"
+regex = '''PVEAPIToken=[a-zA-Z0-9@!.-]+=[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'''
+tags = ["proxmox", "api-token", "security"]
+
+[[rules]]
+id = "docker-compose-secrets"
+description = "Potential secrets in Docker Compose files"
+regex = '''(?i)(password|secret|token|api_key|apikey):\s*['"]{0,1}[a-zA-Z0-9]{16,}['"]{0,1}'''
+path = '''docker-compose\.ya?ml$'''
+tags = ["docker", "secrets", "security"]
+[rules.allowlist]
+description = "Docker Compose example values"
+regexes = [
+  '''example_password''',
+  '''changeme''',
+  '''your_password_here''',
+]
+
+# Entropy detection for high-entropy strings in sensitive contexts
+[[rules]]
+id = "high-entropy-string-env"
+description = "High entropy string in environment files"
+regex = '''[a-zA-Z0-9+/]{32,}'''
+entropy = 4.5
+path = '''\.env$'''
+tags = ["entropy", "env-file", "security"]

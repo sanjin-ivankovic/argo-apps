@@ -1,0 +1,45 @@
+---
+# ============================================================================
+# PostgreSQL Configuration
+# Helm Chart: postgresql v18.1.8 (Bitnami)
+# Application: Shared PostgreSQL database cluster
+# Purpose: Serves Gitea, Paperless-NGX, Joplin, and other applications
+# ============================================================================
+
+# ============================================================================
+# Global Configuration
+# ============================================================================
+
+global:
+  defaultStorageClass: "longhorn" # Use Longhorn for persistent storage
+
+# ============================================================================
+# Authentication Configuration
+# ============================================================================
+
+auth:
+  existingSecret: "postgresql-secret" # Sealed secret containing all passwords
+  secretKeys:
+    adminPasswordKey: postgres-password # Superuser (postgres) password key
+    userPasswordKey: password # Default user password key
+    replicationPasswordKey: replication-password # Replication password key
+
+# ============================================================================
+# Primary Instance Configuration
+# ============================================================================
+
+primary:
+  # Node placement - deploy on worker nodes
+  nodeSelector:
+    node-role.kubernetes.io/worker: "worker"
+
+  # Persistent storage configuration
+  persistence:
+    size: 16Gi # Volume size for database data
+
+  # Service configuration for external access (DataGrip, etc.)
+  service:
+    type: LoadBalancer
+    loadBalancerIP: "10.40.0.68" # Static IP from MetalLB pool
+    ports:
+      postgresql: 5432

@@ -1,0 +1,29 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: ssh://git@gitlab.example.com:2424/homelab/argo-apps.git
+    targetRevision: main
+    path: infrastructure/argocd
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    # Intentionally commented out to avoid automatic sync.
+    # automated:
+    #   prune: true
+    #   selfHeal: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true

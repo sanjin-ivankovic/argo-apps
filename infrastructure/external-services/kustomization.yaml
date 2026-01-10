@@ -1,0 +1,55 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: traefik
+
+resources:
+  # Services
+  - services/adguard-service.yaml
+  - services/duplicati-service.yaml
+  - services/gitlab-service.yaml
+  - services/immich-service.yaml
+  - services/nextcloud-service.yaml
+  - services/semaphore-service.yaml
+  - services/opnsense-service.yaml
+  - services/paperless-ngx-service.yaml
+  - services/proxmox-service.yaml
+  - services/servarr-service.yaml
+  - services/unifi-service.yaml
+  - services/unraid-service.yaml
+
+  # Endpoints
+  - endpoints/adguard-endpoints.yaml
+  - endpoints/duplicati-endpoints.yaml
+  - endpoints/gitlab-endpoints.yaml
+  - endpoints/immich-endpoints.yaml
+  - endpoints/nextcloud-endpoints.yaml
+  - endpoints/semaphore-endpoints.yaml
+  - endpoints/opnsense-endpoints.yaml
+  - endpoints/paperless-ngx-endpoints.yaml
+  - endpoints/proxmox-endpoints.yaml
+  - endpoints/servarr-endpoints.yaml
+  - endpoints/unifi-endpoints.yaml
+  - endpoints/unraid-endpoints.yaml
+
+  # ServersTransport
+  - servers-transport/gitlab-st.yaml
+  - servers-transport/opnsense-st.yaml
+  - servers-transport/proxmox-st.yaml
+  - servers-transport/unifi-st.yaml
+
+  # IngressRoutes
+  - ingress-routes/adguard-ingressroute.yaml
+  - ingress-routes/duplicati-ingressroute.yaml
+  - ingress-routes/gitlab-ingressroute.yaml
+  - ingress-routes/gitlab-ssh-ingressroute.yaml
+  - ingress-routes/immich-ingressroute.yaml
+  - ingress-routes/nextcloud-ingressroute.yaml
+  - ingress-routes/semaphore-ingressroute.yaml
+  - ingress-routes/opnsense-ingressroute.yaml
+  - ingress-routes/paperless-ngx-ingressroute.yaml
+  - ingress-routes/proxmox-ingressroute.yaml
+  - ingress-routes/servarr-ingressroute.yaml
+  - ingress-routes/unifi-ingressroute.yaml
+  - ingress-routes/unraid-ingressroute.yaml

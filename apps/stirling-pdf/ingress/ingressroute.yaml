@@ -1,0 +1,16 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: stirling-pdf-ingressroute
+  namespace: stirling-pdf
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`pdf.example.com`)
+      services:
+        - kind: Service
+          name: stirling-pdf
+          port: 80

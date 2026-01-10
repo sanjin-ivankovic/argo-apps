@@ -1,0 +1,217 @@
+# ==============================================================================
+# GitOps ArgoCD Repository - .gitignore
+# ==============================================================================
+# This repository manages Kubernetes manifests using the app-of-apps pattern
+# with Kustomize and Helm. SealedSecrets are committed; plaintext secrets are not.
+# ==============================================================================
+
+# ==============================================================================
+# OS Files
+# ==============================================================================
+
+# macOS
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.TemporaryItems
+.DocumentRevisions-V100
+.fseventsd
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+desktop.ini
+$RECYCLE.BIN/
+*.stackdump
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ==============================================================================
+# IDE & Editor Files
+# ==============================================================================
+
+# VSCode (keep settings)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# IntelliJ IDEA / PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+\#*\#
+.\#*
+
+# Sublime
+*.sublime-project
+*.sublime-workspace
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# ==============================================================================
+# Secret Management (GitOps Principle: Never Commit Plaintext Secrets)
+# ==============================================================================
+
+# IMPORTANT: SealedSecret YAML files (*-secret.yaml in apps/*/secrets/)
+# SHOULD BE COMMITTED - they are encrypted and safe to store in Git
+
+# Environment files
+.env
+.env.*
+*.env.local
+*.env.*.local
+!.env.example
+
+# Plaintext secret files
+secrets.yaml
+secrets.yml
+unencrypted-secrets/
+*.secret
+
+# Certificate and key files
+*.key
+*.pem
+*.crt
+!*.crt.yaml
+*.p12
+*.pfx
+*.cer
+*.der
+*.csr
+
+# SSH keys
+*_rsa
+*_ed25519
+*_ecdsa
+*_dsa
+id_*
+!id_*.example
+
+# ACME certificates
+acme.json
+
+# ==============================================================================
+# Kubernetes & Kustomize
+# ==============================================================================
+
+# Kustomize build artifacts
+.kustomize-builds/
+**/charts/
+
+# Kubeconfig files (should never be committed)
+kubeconfig
+*.kubeconfig
+*-kubeconfig.yaml
+*.kubeconfig.local
+*.kubeconfig.bak
+config.kubectl
+
+# Local test files
+test-local/
+local-test/
+*.local.yaml
+*.local.yml
+rendered/
+output/
+dist/
+
+# ==============================================================================
+# Build Artifacts & Temporary Files
+# ==============================================================================
+
+# Build directories
+build/
+target/
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+logs/
+*.log.*
+
+# ==============================================================================
+# Python (for scripts/kryptos and CI/CD validation)
+# ==============================================================================
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Pytest
+.pytest_cache/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ==============================================================================
+# GitLab CI/CD Artifacts
+# ==============================================================================
+
+# GitLab reports
+gl-code-quality-report.json
+gl-secret-detection-report.json
+security-findings.json
+*.sarif
+
+# Child pipeline artifacts
+child-pipeline.yml
+
+# ==============================================================================
+# Project-Specific Artifacts
+# ==============================================================================
+
+# Sanitizer reports
+tools/sanitize/reports/
+
+# Archived applications (intentionally not public)
+_archive/
+
+# Local cache directories
+.cache/
+.renovate-cache/
+
+# Cursor IDE
+.cursor/

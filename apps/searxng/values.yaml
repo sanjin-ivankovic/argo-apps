@@ -1,0 +1,29 @@
+---
+# SearXNG Helm Chart values.yaml
+
+replicaCount: 1
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+nodeSelector:
+  node-role.kubernetes.io/worker: worker
+
+env:
+  uwsgiWorkers: "2"
+  uwsgiThreads: "2"
+
+secrets:
+  secretName: searxng-secret
+  keys:
+    baseUrl: base-url
+    secretKey: secret-key
+    valkeyPassword: valkey-password
+
+redis:
+  url: "redis://valkey-master.valkey.svc.cluster.local:6379/0"

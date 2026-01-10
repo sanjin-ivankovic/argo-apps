@@ -1,0 +1,15 @@
+---
+# ============================================================================
+# Longhorn Configuration
+# Helm Chart: longhorn v1.10.1
+# Application: Distributed block storage system for Kubernetes
+# Namespace: longhorn-system
+# ============================================================================
+
+# ============================================================================
+# Pre-Upgrade Checker Configuration
+# ============================================================================
+
+preUpgradeChecker:
+  jobEnabled: false # Disable pre-upgrade check job
+  upgradeVersionCheck: false # Skip version compatibility check

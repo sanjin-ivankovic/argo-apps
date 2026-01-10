@@ -1,0 +1,9 @@
+---
+nodeSelector:
+  node-role.kubernetes.io/worker: worker
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 5Gi
+  storageClass: "longhorn"

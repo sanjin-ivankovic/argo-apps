@@ -1,0 +1,16 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: example-com-wildcard-staging-cert
+  namespace: traefik
+spec:
+  secretName: example-com-wildcard-staging-tls
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+  commonName: "*.example.com"
+  dnsNames:
+    - "example.com"
+    - "*.example.com"
+  renewBefore: 48h # Force renewal (2 days before expiry)

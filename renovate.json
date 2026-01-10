@@ -1,0 +1,371 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate bot configuration for homelab Kubernetes cluster - GitOps-managed infrastructure with conservative update strategy and manual ArgoCD sync workflow",
+  "extends": ["config:best-practices", "mergeConfidence:all-badges"],
+  "timezone": "Europe/Berlin",
+  "schedule": ["at any time"],
+  "labels": ["renovate", "dependencies"],
+  "assignees": ["@maintainer"],
+  "reviewers": ["@maintainer"],
+  "prCreation": "immediate",
+  "rebaseWhen": "behind-base-branch",
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 0,
+  "branchConcurrentLimit": 10,
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "commitMessageAction": "Update",
+  "commitMessageTopic": "{{depName}}",
+  "automerge": false,
+  "platformAutomerge": false,
+  "separateMajorMinor": true,
+  "separateMinorPatch": true,
+  "separateMultipleMajor": true,
+  "dependencyDashboardTitle": "🔄 Renovate: Homelab ArgoCD Dependencies",
+  "dependencyDashboardHeader": "## 📊 Dependency Status Overview\n\nThis dashboard tracks all dependency updates for the homelab Kubernetes cluster managed via ArgoCD.\n\n### ⚠️ Important Workflow Notes\n\n- **Manual Sync Required**: After merging any MR, manually sync affected applications in [ArgoCD UI](https://argo.example.com)\n- **Auto-sync Disabled**: All applications require manual approval in ArgoCD\n- **Priority Levels**: Security (100) → Critical Infrastructure (50-40) → Apps (20-0) → Major Updates (-10)\n- **Label Guide**: `critical` = infrastructure-critical, `urgent` = security vulnerability\n\n---",
+  "dependencyDashboardFooter": "---\n\n## 📚 Resources\n\n- [ArgoCD UI](https://argo.example.com) - Manual sync after merge\n- [Renovate Config](https://gitlab.example.com/homelab/argo-apps/-/blob/main/renovate.json)\n\n🤖 This dashboard is automatically maintained by Renovate Bot",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security", "renovate"],
+    "minimumReleaseAge": "0 days"
+  },
+  "osvVulnerabilityAlerts": true,
+  "ignoreDeps": [""],
+  "ignorePaths": [
+    "**/.github/**",
+    "**/.git/**",
+    "**/bower_components/**",
+    "**/node_modules/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/_archive/**"
+  ],
+  "enabledManagers": [
+    "argocd",
+    "custom.regex",
+    "dockerfile",
+    // "gitlabci", // Disabled: We use custom.regex to strictly control versions
+    //  via .gitlab-ci.yml variables
+    "gomod",
+    "helm-values",
+    "kubernetes",
+    "kustomize"
+  ],
+  "customManagers": [
+    {
+      "description": "Extract tool versions from .gitlab-ci.yml with Renovate annotations",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.gitlab-ci\\.yml$/"],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?(?:\\s+extractVersion=(?<extractVersion>\\S+))?\\s*\\n\\s*\\w+:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}{{#if (equals datasource 'docker')}}docker{{else}}semver{{/if}}{{/if}}"
+    },
+    {
+      "description": "Extract tool versions from Dockerfile ARG variables with Renovate annotations",
+      "customType": "regex",
+      "managerFilePatterns": ["/Dockerfile$/"],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?(?:\\s+extractVersion=(?<extractVersion>\\S+))?\\s*\\n\\s*ARG\\s+\\w+=[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    },
+    {
+      "description": "Extract versions from GitHub release URLs in Kustomize resources",
+      "customType": "regex",
+      "managerFilePatterns": ["/(^|/)kustomization\\.yaml$/"],
+      "matchStrings": [
+        "https://github\\.com/(?<depName>[^/]+/[^/]+)/releases/download/(?<currentValue>v?[^/]+)/.+"
+      ],
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "Extract versions from raw GitHub URLs in Kustomize resources",
+      "customType": "regex",
+      "managerFilePatterns": ["/(^|/)kustomization\\.yaml$/"],
+      "matchStrings": [
+        "https://raw\\.githubusercontent\\.com/(?<depName>[^/]+/[^/]+)/(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)/.+"
+      ],
+      "datasourceTemplate": "github-tags"
+    }
+  ],
+  "hostRules": [
+    {
+      "description": "GitLab container registry authentication (credentials from CI environment variables)",
+      "matchHost": "registry.example.com",
+      "hostType": "docker"
+    },
+    {
+      "description": "DHI.io hardened images registry (requires authentication)",
+      "matchHost": "dhi.io",
+      "hostType": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Block Helm v4 until Kustomize supports it (tracking: https://github.com/kubernetes-sigs/kustomize/pull/6016)",
+      "matchDatasources": ["github-releases"],
+      "matchPackageNames": ["helm/helm"],
+      "allowedVersions": "<4.0.0"
+    },
+    {
+      "description": "Kryptos CLI - Go dependencies for local secret management tool",
+      "matchFileNames": ["scripts/kryptos/go.mod"],
+      "matchManagers": ["gomod"],
+      "groupName": "kryptos-deps",
+      "commitMessagePrefix": "chore(kryptos):",
+      "labels": ["kryptos", "go"],
+      "prPriority": 2,
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "ArgoCD - Self-managing GitOps controller, 14-day stabilization to prevent deployment failures (excludes digest pinning)",
+      "matchFileNames": [
+        "infrastructure/argocd/**/*.yaml",
+        "argocd/infrastructure/argocd.yaml"
+      ],
+      "matchDatasources": ["helm", "docker"],
+      "matchPackageNames": ["/argo-cd/", "/argocd/"],
+      "matchUpdateTypes": ["major", "minor", "patch", "digest"],
+      "groupName": "argocd-self-update",
+      "commitMessagePrefix": "chore(argocd):",
+      "labels": ["argocd", "gitops", "critical"],
+      "prPriority": 50,
+      "minimumReleaseAge": "14 days"
+    },
+    {
+      "description": "Longhorn - Distributed storage system, 14-day stabilization to protect persistent data (excludes digest pinning)",
+      "matchFileNames": [
+        "infrastructure/longhorn/**/*.yaml",
+        "argocd/infrastructure/longhorn.yaml"
+      ],
+      "matchDatasources": ["helm", "docker"],
+      "matchPackageNames": ["/longhorn/"],
+      "matchUpdateTypes": ["major", "minor", "patch", "digest"],
+      "groupName": "longhorn-updates",
+      "commitMessagePrefix": "chore(longhorn):",
+      "labels": ["longhorn", "storage", "critical"],
+      "prPriority": 40,
+      "minimumReleaseAge": "14 days"
+    },
+    {
+      "description": "Traefik - Ingress controller for all applications, affects entire cluster network access (excludes digest pinning)",
+      "matchFileNames": [
+        "infrastructure/traefik/**/*.yaml",
+        "argocd/infrastructure/traefik.yaml"
+      ],
+      "matchDatasources": ["helm", "docker"],
+      "matchPackageNames": ["/traefik/", "dhi.io/traefik"],
+      "matchUpdateTypes": ["major", "minor", "patch", "digest"],
+      "groupName": "traefik-updates",
+      "commitMessagePrefix": "chore(traefik):",
+      "labels": ["traefik", "ingress", "critical"],
+      "prPriority": 30,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Cert-Manager - TLS certificate automation, 7-day stabilization for security component (excludes digest pinning)",
+      "matchFileNames": [
+        "infrastructure/cert-manager/**/*.yaml",
+        "argocd/infrastructure/cert-manager.yaml"
+      ],
+      "matchDatasources": ["helm", "docker"],
+      "matchPackageNames": ["/cert-manager/"],
+      "matchUpdateTypes": ["major", "minor", "patch", "digest"],
+      "groupName": "cert-manager-updates",
+      "commitMessagePrefix": "chore(cert-manager):",
+      "labels": ["cert-manager", "certificates", "critical"],
+      "prPriority": 25,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "PostgreSQL - Shared database for multiple apps, 14-day stabilization to protect persistent data",
+      "matchFileNames": ["apps/postgresql/kustomization.yaml"],
+      "matchDatasources": ["helm"],
+      "matchPackageNames": ["postgresql"],
+      "groupName": "postgresql-chart",
+      "commitMessagePrefix": "chore(postgresql):",
+      "labels": ["postgresql", "database", "critical"],
+      "prPriority": 20,
+      "minimumReleaseAge": "14 days"
+    },
+    {
+      "description": "Valkey - Redis-compatible cache, 7-day stabilization for critical but stateless service",
+      "matchFileNames": ["apps/valkey/kustomization.yaml"],
+      "matchDatasources": ["helm"],
+      "matchPackageNames": ["valkey"],
+      "groupName": "valkey-chart",
+      "commitMessagePrefix": "chore(valkey):",
+      "labels": ["valkey", "cache"],
+      "prPriority": 15,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Infrastructure Helm charts - General infrastructure components with 7-day stabilization",
+      "matchFileNames": ["infrastructure/*/kustomization.yaml"],
+      "matchManagers": ["kustomize"],
+      "matchDatasources": ["helm"],
+      "groupName": "{{parentDir}}-infrastructure",
+      "commitMessagePrefix": "chore({{parentDir}}):",
+      "labels": ["infrastructure", "helm", "critical"],
+      "prPriority": 12,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "ArgoCD Applications - GitOps deployment manifests, controls app sync behavior",
+      "matchFileNames": ["argocd/**/*.yaml"],
+      "matchManagers": ["argocd"],
+      "groupName": "argocd-manifests",
+      "commitMessagePrefix": "chore(argocd):",
+      "labels": ["argocd", "gitops", "critical"],
+      "prPriority": 18,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Monitoring - Prometheus and Grafana stack for observability, non-blocking failures (excludes digest pinning)",
+      "matchFileNames": ["infrastructure/monitoring/**/*.yaml"],
+      "matchDatasources": ["helm", "docker"],
+      "matchUpdateTypes": ["major", "minor", "patch", "digest"],
+      "groupName": "monitoring-stack",
+      "commitMessagePrefix": "chore(monitoring):",
+      "labels": ["monitoring", "observability"],
+      "prPriority": 10,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "CI/CD tools - GitLab CI pipeline dependencies without digest pinning, separate PRs per tool",
+      "matchFileNames": [".gitlab-ci.yml"],
+      "matchManagers": ["gitlabci", "custom.regex"],
+      "pinDigests": false,
+      "commitMessagePrefix": "ci({{depName}}):",
+      "labels": ["ci", "automation"],
+      "prPriority": 8,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "CI Dockerfile - Build tool dependencies without digest pinning, separate PRs per tool",
+      "matchFileNames": ["docker/ci/Dockerfile"],
+      "matchManagers": ["dockerfile", "custom.regex"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "pinDigests": false,
+      "commitMessagePrefix": "ci({{depName}}):",
+      "labels": ["ci", "docker"],
+      "prPriority": 8,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Application Helm charts - Minor and major updates grouped by app for atomic deployments",
+      "matchFileNames": ["apps/*/kustomization.yaml"],
+      "matchManagers": ["kustomize"],
+      "matchDatasources": ["helm"],
+      "matchUpdateTypes": ["minor", "major"],
+      "groupName": "{{parentDir}}-helm-charts",
+      "commitMessagePrefix": "chore({{parentDir}}):",
+      "labels": ["apps", "helm", "minor-major"],
+      "prPriority": 5,
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Docker digest pinning - Pin floating tags to specific digests for reproducibility (no stabilization needed - same version)",
+      "matchFileNames": ["apps/**/*.yaml", "infrastructure/**/*.yaml"],
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["pin"],
+      "groupName": null,
+      "commitMessagePrefix": "fix({{parentDir}}):",
+      "labels": ["docker", "pinning"],
+      "prPriority": 5,
+      "minimumReleaseAge": "0 days"
+    },
+    {
+      "description": "Application patches - Low-risk patch updates grouped to reduce PR noise",
+      "matchFileNames": ["apps/*/kustomization.yaml"],
+      "matchManagers": ["kustomize"],
+      "matchDatasources": ["helm"],
+      "matchUpdateTypes": ["patch"],
+      "matchPackageNames": [
+        "!postgresql",
+        "!valkey",
+        "!traefik",
+        "!cert-manager",
+        "!longhorn",
+        "!argo-cd"
+      ],
+      "groupName": "apps-patch-updates",
+      "commitMessagePrefix": "chore(apps):",
+      "labels": ["apps", "patch"],
+      "prPriority": 3,
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Docker images - Container version and digest updates grouped by directory (excludes infrastructure components with specific rules)",
+      "matchFileNames": [
+        "apps/**/*.yaml",
+        "infrastructure/**/*.yaml",
+        "!infrastructure/argocd/**",
+        "!infrastructure/longhorn/**",
+        "!infrastructure/traefik/**",
+        "!infrastructure/cert-manager/**",
+        "!infrastructure/monitoring/**"
+      ],
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["major", "minor", "patch", "digest"],
+      "groupName": "{{parentDir}}-docker-images",
+      "commitMessagePrefix": "chore({{parentDir}}):",
+      "labels": ["docker", "images"],
+      "prPriority": 0,
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Major version updates - Breaking changes deferred 30 days for extensive testing",
+      "matchFileNames": ["**/*", "!.gitlab-ci.yml", "!docker/ci/Dockerfile"],
+      "matchUpdateTypes": ["major"],
+      "commitMessagePrefix": "chore(deps):",
+      "labels": ["major-update", "breaking-change"],
+      "prPriority": -10,
+      "minimumReleaseAge": "30 days"
+    },
+    {
+      "description": "Private registry exclusion - Custom OCI images managed in separate helm-charts repository",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["/^registry\\.example\\.com//"],
+      "enabled": false
+    },
+    {
+      "description": "Unstable versions - Ignore alpha, beta, and RC releases by default",
+      "matchPackageNames": ["/.*/ "],
+      "ignoreUnstable": true
+    }
+  ],
+  "prBodyTemplate": "{{{header}}}{{{table}}}{{{warnings}}}{{{notes}}}{{{changelogs}}}{{{configDescription}}}{{{controls}}}{{{footer}}}",
+  "prBodyColumns": [
+    "Package",
+    "Update",
+    "Type",
+    "New value",
+    "Package file",
+    "References"
+  ],
+  "prBodyDefinitions": {
+    "Package": "{{{depNameLinked}}}{{#if newName}}{{#unless (equals depName newName)}} → {{{newNameLinked}}}{{/unless}}{{/if}}",
+    "Type": "{{{depType}}}",
+    "Update": "{{{updateType}}}",
+    "Current value": "{{{currentValue}}}",
+    "New value": "{{{newValue}}}",
+    "Change": "`{{{displayFrom}}}` → `{{{displayTo}}}`",
+    "Pending": "{{{displayPending}}}",
+    "References": "{{{references}}}",
+    "Package file": "{{{packageFile}}}",
+    "Age": "{{#if newVersion}}![age](https://developer.mend.io/api/mc/badges/age/{{datasource}}/{{replace '/' '%2f' packageName}}/{{{newVersion}}}?slim=true){{/if}}",
+    "Adoption": "{{#if newVersion}}![adoption](https://developer.mend.io/api/mc/badges/adoption/{{datasource}}/{{replace '/' '%2f' packageName}}/{{{newVersion}}}?slim=true){{/if}}",
+    "Passing": "{{#if newVersion}}![passing](https://developer.mend.io/api/mc/badges/compatibility/{{datasource}}/{{replace '/' '%2f' packageName}}/{{{currentVersion}}}/{{{newVersion}}}?slim=true){{/if}}",
+    "Confidence": "{{#if newVersion}}![confidence](https://developer.mend.io/api/mc/badges/confidence/{{datasource}}/{{replace '/' '%2f' packageName}}/{{{currentVersion}}}/{{{newVersion}}}?slim=true){{/if}}"
+  },
+  "prFooter": "🤖 This MR was created automatically by Renovate Bot. Review changes carefully before merging.\n\n⚠️ **Important**: After merging, manually sync the affected applications in ArgoCD UI at https://argo.example.com",
+  "suppressNotifications": ["prIgnoreNotification"],
+  "postUpdateOptions": [],
+  "lockFileMaintenance": {
+    "enabled": false,
+    "description": "Disabled for GitOps - no lock files in this repository"
+  }
+}

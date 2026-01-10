@@ -1,0 +1,104 @@
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: bazarr
+  namespace: traefik
+subsets:
+  - addresses:
+      - ip: 10.30.0.30
+    ports:
+      - port: 6767
+        name: http
+        protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: notifiarr
+  namespace: traefik
+subsets:
+  - addresses:
+      - ip: 10.30.0.30
+    ports:
+      - port: 5454
+        name: http
+        protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: overseerr
+  namespace: traefik
+subsets:
+  - addresses:
+      - ip: 10.30.0.30
+    ports:
+      - port: 5055
+        name: http
+        protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: plex
+  namespace: traefik
+subsets:
+  - addresses:
+      - ip: 10.30.0.30
+    ports:
+      - port: 32400
+        name: http
+        protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: prowlarr
+  namespace: traefik
+subsets:
+  - addresses:
+      - ip: 10.30.0.30
+    ports:
+      - port: 9696
+        name: http
+        protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: qbittorrent
+  namespace: traefik
+subsets:
+  - addresses:
+      - ip: 10.30.0.30
+    ports:
+      - port: 8080
+        name: http
+        protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: radarr
+  namespace: traefik
+subsets:
+  - addresses:
+      - ip: 10.30.0.30
+    ports:
+      - port: 7878
+        name: http
+        protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: sonarr
+  namespace: traefik
+subsets:
+  - addresses:
+      - ip: 10.30.0.30
+    ports:
+      - port: 8989
+        name: http
+        protocol: TCP

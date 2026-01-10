@@ -1,0 +1,9 @@
+---
+crds:
+  enabled: true
+
+# Configure DNS01 challenge to use external DNS servers
+# This fixes issues where cert-manager can't resolve local DNS servers from
+# within the cluster
+dns01RecursiveNameservers: "10.10.0.10:53,10.10.0.11:53"
+dns01RecursiveNameserversOnly: true

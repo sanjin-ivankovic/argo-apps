@@ -1,0 +1,105 @@
+---
+# ============================================================================
+# Cloudflared Configuration
+# Helm Chart: cloudflared v0.1.3 (Custom OCI chart)
+# Application: Cloudflare Tunnel client for secure ingress
+# Repository: oci://registry.example.com/homelab/argo-apps/charts
+# ============================================================================
+
+# ============================================================================
+# Deployment Configuration
+# ============================================================================
+
+# High availability with 2 replicas
+replicaCount: 1
+
+# Rolling update strategy - zero downtime
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1 # Allow 1 extra pod during update
+    maxUnavailable: 0 # Ensure no downtime
+
+# ============================================================================
+# Node Placement
+# ============================================================================
+
+# Deploy only on worker nodes
+nodeSelector:
+  node-role.kubernetes.io/worker: worker
+
+# ============================================================================
+# Resource Management
+# ============================================================================
+
+resources:
+  limits:
+    cpu: 100m # Max CPU usage
+    memory: 128Mi # Max memory usage
+  requests:
+    cpu: 50m # Guaranteed CPU
+    memory: 64Mi # Guaranteed memory
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+
+# Log level: debug, info, warn, error, fatal
+logLevel: info
+
+# ============================================================================
+# Managed Tunnel Configuration (Cloudflare Zero Trust)
+# ============================================================================
+
+# Managed tunnel via Cloudflare Zero Trust Dashboard
+managed:
+  enabled: true
+  # token: ""  # DO NOT set inline - use secret instead
+  # Secret containing cf-tunnel-token key
+  existingSecret: "cloudflared-tunnel-token"
+
+# ============================================================================
+# Local Tunnel Configuration (Alternative)
+# ============================================================================
+
+# Local tunnel configuration - disabled when using managed tunnel
+local:
+  enabled: false
+  # auth:
+  #   tunnelID: ""
+  #   accountTag: ""
+  #   tunnelName: ""
+  #   tunnelSecret: ""
+  #   existingSecret: ""
+  # warpRouting: false
+  # ingress: []
+
+# ============================================================================
+# Metrics & Monitoring
+# ============================================================================
+
+# Prometheus metrics endpoint
+metrics:
+  enabled: false
+  # port: "8080"
+
+# ============================================================================
+# Autoscaling Configuration
+# ============================================================================
+
+# Horizontal Pod Autoscaler (disabled by default)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetMemoryUtilizationPercentage: 80
+  targetCPUUtilizationPercentage: 80
+
+# ============================================================================
+# High Availability
+# ============================================================================
+
+# Pod Disruption Budget (disabled - manual replica management)
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1

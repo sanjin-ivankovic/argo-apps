@@ -1,0 +1,42 @@
+---
+# Valkey Minimal Configuration Overrides
+# Bitnami Valkey Chart v5.0.8
+
+# ============================================================================
+# Global Configuration
+# ============================================================================
+
+global:
+  defaultStorageClass: "longhorn"
+
+# ============================================================================
+# Architecture
+# ============================================================================
+
+architecture: standalone # Options: standalone, replication
+
+# ============================================================================
+# Authentication
+# ============================================================================
+
+auth:
+  enabled: true
+  existingSecret: "valkey-password-secret"
+  existingSecretPasswordKey: "password"
+
+# ============================================================================
+# Primary Node Configuration
+# ============================================================================
+
+primary:
+  # Node affinity
+  nodeSelector:
+    node-role.kubernetes.io/worker: "worker"
+
+  # Persistence
+  persistence:
+    enabled: true
+    storageClass: "longhorn"
+    size: 8Gi
+    accessModes:
+      - ReadWriteOnce

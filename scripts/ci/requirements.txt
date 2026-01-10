@@ -1,0 +1,4 @@
+PyYAML>=6.0
+pytest>=7.4.0
+pytest-cov>=4.1.0
+requests>=2.32.0  # For pipeline_metrics.py GitLab API calls

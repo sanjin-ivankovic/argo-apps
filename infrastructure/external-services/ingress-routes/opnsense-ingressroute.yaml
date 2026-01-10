@@ -1,0 +1,17 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: opnsense-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`firewall.example.com`)
+      services:
+        - kind: Service
+          name: opnsense
+          port: 443
+          serversTransport: opnsense-st

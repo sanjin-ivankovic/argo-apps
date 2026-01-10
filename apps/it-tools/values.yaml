@@ -1,0 +1,5 @@
+---
+# Override default values for it-tools chart
+
+nodeSelector:
+  node-role.kubernetes.io/worker: worker
