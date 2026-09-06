@@ -1,0 +1,21 @@
+---
+# One Time Secret — public route with no Traefik ForwardAuth gate: recipients
+# of secret links must be able to open them without SSO. The app's own login
+# is the gate for creating secrets (AUTH_REQUIRED, signup disabled after
+# bootstrap). Exposed via the managed Cloudflare tunnel; the public hostname
+# is configured in the Cloudflare Zero Trust dashboard, not in this repo.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: onetimesecret-ingressroute
+  namespace: onetimesecret
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`secret.example.com`)
+      services:
+        - kind: Service
+          name: onetimesecret
+          port: 80

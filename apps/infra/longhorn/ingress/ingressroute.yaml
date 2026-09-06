@@ -1,0 +1,36 @@
+---
+# Longhorn UI exposes a built-in dashboard on the longhorn-frontend
+# Service (port 80) with NO authentication of its own — anyone reaching
+# the host could trigger destructive operations (volume deletion, node
+# disable, etc.). Gate the route behind the Authentik ForwardAuth middleware.
+#
+# Requires the matching longhorn proxy provider in
+# apps/infra/authentik/blueprints/10-proxy-providers.yaml — a host with no
+# provider is a 404 from the outpost, so the pair must move together.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: longhorn-ingressroute
+  namespace: longhorn-system
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`longhorn.example.com`)
+      middlewares:
+        - name: authentik-forwardauth
+          namespace: authentik
+      services:
+        - kind: Service
+          name: longhorn-frontend
+          port: 80
+    # The outpost's own endpoints (login redirect target, callback). Longer
+    # rule wins Traefik's default priority; carries no auth middleware.
+    - kind: Rule
+      match: Host(`longhorn.example.com`) && PathPrefix(`/outpost.goauthentik.io/`)
+      services:
+        - kind: Service
+          name: authentik-server
+          namespace: authentik
+          port: 80

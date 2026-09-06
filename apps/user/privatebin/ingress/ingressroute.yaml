@@ -1,0 +1,33 @@
+---
+# PrivateBin has no authentication of its own and is published via the
+# Cloudflare tunnel, so the Authentik ForwardAuth middleware is the single
+# gate — treat the middleware reference as load-bearing. Requires the
+# matching privatebin proxy provider in
+# apps/infra/authentik/blueprints/10-proxy-providers.yaml.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: privatebin-ingressroute
+  namespace: privatebin
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`privatebin.example.com`)
+      middlewares:
+        - name: authentik-forwardauth
+          namespace: authentik
+      services:
+        - kind: Service
+          name: privatebin
+          port: 80
+    # The outpost's own endpoints (login redirect target, callback). Longer
+    # rule wins Traefik's default priority; carries no auth middleware.
+    - kind: Rule
+      match: Host(`privatebin.example.com`) && PathPrefix(`/outpost.goauthentik.io/`)
+      services:
+        - kind: Service
+          name: authentik-server
+          namespace: authentik
+          port: 80

@@ -1,0 +1,35 @@
+# yamllint disable-file
+---
+# Assigns every forward-auth proxy provider to the embedded outpost (the
+# authentik-server pods — no extra deployment). authentik_host is the
+# browser-facing URL the outpost redirects unauthenticated users to.
+version: 1
+metadata:
+  name: homelab-outpost
+  labels:
+    blueprints.goauthentik.io/description: Embedded outpost provider assignment
+entries:
+  # Blueprint files are not discovered in a guaranteed order; force the proxy
+  # providers first so the !Find list below always resolves.
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: homelab-proxy-providers
+      required: true
+
+  - model: authentik_outposts.outpost
+    state: present
+    identifiers:
+      managed: goauthentik.io/outposts/embedded
+    attrs:
+      config:
+        authentik_host: https://auth.example.com
+      providers:
+        - !Find [authentik_providers_proxy.proxyprovider, [name, longhorn-forward-auth]]
+        - !Find [authentik_providers_proxy.proxyprovider, [name, privatebin-forward-auth]]
+        - !Find [authentik_providers_proxy.proxyprovider, [name, translate-forward-auth]]
+        - !Find [authentik_providers_proxy.proxyprovider, [name, chat-forward-auth]]
+        - !Find [authentik_providers_proxy.proxyprovider, [name, docuseal-forward-auth]]
+        - !Find [authentik_providers_proxy.proxyprovider, [name, memos-forward-auth]]
+        - !Find [authentik_providers_proxy.proxyprovider, [name, pdf-forward-auth]]
+        - !Find [authentik_providers_proxy.proxyprovider, [name, semaphore-forward-auth]]

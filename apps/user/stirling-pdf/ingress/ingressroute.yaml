@@ -1,0 +1,30 @@
+---
+# Stirling-PDF — keeps its own login behind the Authentik forward-auth gate
+# (defence in depth).
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: stirling-pdf-ingressroute
+  namespace: stirling-pdf
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`pdf.example.com`)
+      middlewares:
+        - name: authentik-forwardauth
+          namespace: authentik
+      services:
+        - kind: Service
+          name: stirling-pdf
+          port: 80
+    # The outpost's own endpoints (login redirect target, callback). Longer
+    # rule wins Traefik's default priority; carries no auth middleware.
+    - kind: Rule
+      match: Host(`pdf.example.com`) && PathPrefix(`/outpost.goauthentik.io/`)
+      services:
+        - kind: Service
+          name: authentik-server
+          namespace: authentik
+          port: 80

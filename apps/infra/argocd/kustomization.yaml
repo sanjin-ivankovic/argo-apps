@@ -1,0 +1,62 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.2/manifests/install.yaml
+  - ingress
+  - secrets
+
+patches:
+  - path: patches/argocd-cm-patch.yaml
+    target:
+      kind: ConfigMap
+      name: argocd-cm
+  - path: patches/argocd-cmd-params-cm-patch.yaml
+    target:
+      kind: ConfigMap
+      name: argocd-cmd-params-cm
+  - path: patches/argocd-ssh-known-hosts-cm.yaml
+    target:
+      kind: ConfigMap
+      name: argocd-ssh-known-hosts-cm
+  # Docker config for OCI registry authentication in repo-server
+  - path: patches/argocd-repo-server-dockerconfig-patch.yaml
+    target:
+      kind: Deployment
+      name: argocd-repo-server
+  # Node placement patches for infrastructure tier
+  - path: patches/node-placement-patch.json
+    target:
+      kind: Deployment
+      name: argocd-server
+  - path: patches/node-placement-patch.json
+    target:
+      kind: Deployment
+      name: argocd-repo-server
+  - path: patches/node-placement-patch.json
+    target:
+      kind: Deployment
+      name: argocd-dex-server
+  - path: patches/node-placement-patch.json
+    target:
+      kind: Deployment
+      name: argocd-redis
+  - path: patches/node-placement-patch.json
+    target:
+      kind: Deployment
+      name: argocd-applicationset-controller
+  - path: patches/node-placement-patch.json
+    target:
+      kind: Deployment
+      name: argocd-notifications-controller
+  - path: patches/node-placement-patch.json
+    target:
+      kind: StatefulSet
+      name: argocd-application-controller
+
+images:
+  - name: quay.io/argoproj/argocd
+    newTag: v3.5.2

@@ -1,0 +1,19 @@
+---
+# GitLab web. GitLab has its own multi-user auth, so no SSO ForwardAuth here
+# (matches bitwarden). GitLab serves the canonical source.example.com.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: gitlab-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`source.example.com`)
+      services:
+        - kind: Service
+          name: gitlab
+          port: 8080
+          scheme: http

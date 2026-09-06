@@ -1,0 +1,17 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: docuseal
+
+helmCharts:
+  - name: docuseal
+    repo: oci://registry.example.com/example-org/helm-charts
+    version: 1.0.12
+    releaseName: docuseal
+    namespace: docuseal
+    valuesFile: values.yaml
+
+resources:
+  - ingress
+  - secrets

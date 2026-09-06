@@ -1,0 +1,64 @@
+---
+# ============================================================================
+# Joplin Server Configuration
+# Helm Chart: joplin 1.0.1 (homelab custom chart)
+# Purpose: Note-taking sync server; uses the shared PostgreSQL cluster.
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# ============================================================================
+# Database & Environment
+# ============================================================================
+
+# Secret containing PostgreSQL credentials.
+existingSecret: "joplin-secret"
+secretKeys:
+  postgresDatabase: "database"
+  postgresUser: "username"
+  postgresPassword: "password"
+
+env:
+  APP_PORT: "22300"
+  APP_BASE_URL: "https://joplin.example.com"
+  DB_CLIENT: "pg"
+  POSTGRES_HOST: "postgresql.postgresql.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+
+# ============================================================================
+# Health Probes
+# ============================================================================
+
+# Host header required: Joplin validates the request origin against APP_BASE_URL.
+probes:
+  liveness:
+    httpGetPath: /api/ping
+    httpHeaders:
+      - name: Host
+        value: joplin.example.com
+  readiness:
+    httpGetPath: /api/ping
+    httpHeaders:
+      - name: Host
+        value: joplin.example.com

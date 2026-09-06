@@ -1,0 +1,162 @@
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: bazarr
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: bazarr
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.30.0.30
+    conditions:
+      ready: true
+ports:
+  - port: 6767
+    name: http
+    protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: lingarr
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: lingarr
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.30.0.30
+    conditions:
+      ready: true
+ports:
+  - port: 8082
+    name: http
+    protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: notifiarr
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: notifiarr
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.30.0.30
+    conditions:
+      ready: true
+ports:
+  - port: 5454
+    name: http
+    protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: seerr
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: seerr
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.30.0.30
+    conditions:
+      ready: true
+ports:
+  - port: 5055
+    name: http
+    protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: plex
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: plex
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.30.0.30
+    conditions:
+      ready: true
+ports:
+  - port: 32400
+    name: http
+    protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: prowlarr
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: prowlarr
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.30.0.30
+    conditions:
+      ready: true
+ports:
+  - port: 9696
+    name: http
+    protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: qbittorrent
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: qbittorrent
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.30.0.30
+    conditions:
+      ready: true
+ports:
+  - port: 8080
+    name: http
+    protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: radarr
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: radarr
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.30.0.30
+    conditions:
+      ready: true
+ports:
+  - port: 7878
+    name: http
+    protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: sonarr
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: sonarr
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.30.0.30
+    conditions:
+      ready: true
+ports:
+  - port: 8989
+    name: http
+    protocol: TCP

@@ -1,0 +1,37 @@
+---
+# ============================================================================
+# MetalLB Configuration
+# Helm Chart: metallb 0.16.1 (MetalLB)
+# Purpose: Bare-metal L2 load balancer — assigns LoadBalancer Service IPs from
+#          the homelab address pool (Traefik, GitLab SSH, PostgreSQL, etc.).
+# ============================================================================
+
+# ============================================================================
+# Controller Configuration
+# ============================================================================
+
+controller:
+  priorityClassName: critical-infrastructure
+
+  # Schedule on worker nodes.
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists
+
+# ============================================================================
+# Speaker Configuration (DaemonSet)
+# ============================================================================
+
+speaker:
+  priorityClassName: critical-infrastructure
+
+  # DaemonSet with no nodeSelector — speakers run on ALL nodes (incl.
+  # control-plane, via the toleration) so any node can announce the L2 VIPs.
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule

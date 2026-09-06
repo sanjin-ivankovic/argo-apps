@@ -1,0 +1,244 @@
+# yamllint disable-file
+---
+# One forward-auth proxy provider + application + admins-only binding per
+# protected host — access fails closed: an app route carrying the
+# authentik-forwardauth middleware with no application here returns 404 from
+# the outpost, and a user outside `admins` is denied by the binding.
+#
+# MFA enforcement is NOT per-application — it lives in the (UI-managed)
+# default authentication flow, which all of these inherit.
+version: 1
+metadata:
+  name: homelab-proxy-providers
+  labels:
+    blueprints.goauthentik.io/description: Forward-auth providers for Traefik-gated hosts
+entries:
+  # Blueprint files are not discovered in a guaranteed order; force the groups
+  # blueprint first so the admins !Find below always resolves.
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: homelab-groups
+      required: true
+
+  # --- longhorn.example.com (no auth of its own — the gate is the only
+  # protection) ---
+  - model: authentik_providers_proxy.proxyprovider
+    id: longhorn-provider
+    state: present
+    identifiers:
+      name: longhorn-forward-auth
+    attrs:
+      mode: forward_single
+      external_host: https://longhorn.example.com
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+  - model: authentik_core.application
+    id: longhorn-app
+    state: present
+    identifiers:
+      slug: longhorn
+    attrs:
+      name: Longhorn
+      provider: !KeyOf longhorn-provider
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf longhorn-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0
+
+  # --- privatebin.example.com (no auth of its own; public via the Cloudflare
+  # tunnel) ---
+  - model: authentik_providers_proxy.proxyprovider
+    id: privatebin-provider
+    state: present
+    identifiers:
+      name: privatebin-forward-auth
+    attrs:
+      mode: forward_single
+      external_host: https://privatebin.example.com
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+  - model: authentik_core.application
+    id: privatebin-app
+    state: present
+    identifiers:
+      slug: privatebin
+    attrs:
+      name: PrivateBin
+      provider: !KeyOf privatebin-provider
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf privatebin-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0
+
+  # --- translate.example.com (LibreTranslate on an external LXC; no auth of
+  # its own) ---
+  - model: authentik_providers_proxy.proxyprovider
+    id: translate-provider
+    state: present
+    identifiers:
+      name: translate-forward-auth
+    attrs:
+      mode: forward_single
+      external_host: https://translate.example.com
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+  - model: authentik_core.application
+    id: translate-app
+    state: present
+    identifiers:
+      slug: translate
+    attrs:
+      name: LibreTranslate
+      provider: !KeyOf translate-provider
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf translate-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0
+
+  # --- chat.example.com (Open WebUI tunnel host; defence in depth, own login
+  # behind the gate) ---
+  - model: authentik_providers_proxy.proxyprovider
+    id: chat-provider
+    state: present
+    identifiers:
+      name: chat-forward-auth
+    attrs:
+      mode: forward_single
+      external_host: https://chat.example.com
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+  - model: authentik_core.application
+    id: chat-app
+    state: present
+    identifiers:
+      slug: chat
+    attrs:
+      name: Open WebUI (chat)
+      provider: !KeyOf chat-provider
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf chat-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0
+
+  # --- docuseal.example.com (defence in depth) ---
+  - model: authentik_providers_proxy.proxyprovider
+    id: docuseal-provider
+    state: present
+    identifiers:
+      name: docuseal-forward-auth
+    attrs:
+      mode: forward_single
+      external_host: https://docuseal.example.com
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+  - model: authentik_core.application
+    id: docuseal-app
+    state: present
+    identifiers:
+      slug: docuseal
+    attrs:
+      name: DocuSeal
+      provider: !KeyOf docuseal-provider
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf docuseal-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0
+
+  # --- memos.example.com (defence in depth) ---
+  - model: authentik_providers_proxy.proxyprovider
+    id: memos-provider
+    state: present
+    identifiers:
+      name: memos-forward-auth
+    attrs:
+      mode: forward_single
+      external_host: https://memos.example.com
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+  - model: authentik_core.application
+    id: memos-app
+    state: present
+    identifiers:
+      slug: memos
+    attrs:
+      name: Memos
+      provider: !KeyOf memos-provider
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf memos-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0
+
+  # --- semaphore.example.com (Ansible runner holding R2 credentials, the
+  # Ansible Vault password and a fleet-wide SSH key; its own login form is
+  # the only other boundary) ---
+  - model: authentik_providers_proxy.proxyprovider
+    id: semaphore-provider
+    state: present
+    identifiers:
+      name: semaphore-forward-auth
+    attrs:
+      mode: forward_single
+      external_host: https://semaphore.example.com
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+  - model: authentik_core.application
+    id: semaphore-app
+    state: present
+    identifiers:
+      slug: semaphore
+    attrs:
+      name: Semaphore
+      provider: !KeyOf semaphore-provider
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf semaphore-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0
+
+  # --- pdf.example.com (Stirling PDF; defence in depth) ---
+  - model: authentik_providers_proxy.proxyprovider
+    id: pdf-provider
+    state: present
+    identifiers:
+      name: pdf-forward-auth
+    attrs:
+      mode: forward_single
+      external_host: https://pdf.example.com
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+  - model: authentik_core.application
+    id: pdf-app
+    state: present
+    identifiers:
+      slug: pdf
+    attrs:
+      name: Stirling PDF
+      provider: !KeyOf pdf-provider
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf pdf-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0

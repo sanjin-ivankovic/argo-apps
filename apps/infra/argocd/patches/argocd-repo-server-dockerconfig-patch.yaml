@@ -1,0 +1,28 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
+  template:
+    spec:
+      volumes:
+        - name: docker-config
+          secret:
+            secretName: argocd-repo-server-dockerconfig
+            items:
+              - key: config.json
+                path: config.json
+      containers:
+        - name: argocd-repo-server
+          volumeMounts:
+            - name: docker-config
+              mountPath: /home/argocd/.docker
+              readOnly: true
+          env:
+            - name: DOCKER_CONFIG
+              value: /home/argocd/.docker

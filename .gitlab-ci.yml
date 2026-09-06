@@ -1,0 +1,196 @@
+---
+# =============================================================================
+# GitLab CI/CD pipeline for argo-apps (the ArgoCD GitOps repo).
+#
+# Runs on the homelab gitlab-runner (Docker executor binding the host docker
+# socket — tags:[docker]). CD is ArgoCD: it reconciles this repo under a
+# manual-sync policy, independent of this pipeline.
+#
+# Quality is NATIVE per-tool jobs (fail-fast, individually gated), NOT a
+# pre-commit blob. pre-commit stays a LOCAL dev hook only — never run in CI.
+#
+# Shared jobs come from homelab/ci-components CI/CD COMPONENTS (version-pinned
+# in the include: block below, Renovate-tracked). They run on this repo's CI image ($CI_IMAGE = argo-apps/ci,
+# a thin FROM ci-base layer) since the validate jobs need kustomize/kubeconform/
+# kryptos. validate:apps + validate:kryptos-configs are argo-only and stay
+# inline. The CI image bakes the kryptos CLI via a BuildKit secret — the ci-image
+# component's setup_script writes the token file, build_args passes the --secret.
+#
+# validate:apps fans out over CHANGED app dirs: GitLab's native rules:changes
+# gates the job (apps/** touched), then detect_apps.py ENUMERATES the changed
+# app dirs (a dynamic set native rules can't list) and validate_app.py runs
+# `kustomize build --enable-helm | kubeconform` per dir against the CRDs-catalog
+# baked into the CI image (no cluster access needed).
+#
+# Harbor auth: GitLab Harbor integration (group homelab) injects $HARBOR_*.
+# Secrets via group CI/CD variables: COSIGN_KEY/COSIGN_PASSWORD, RENOVATE_*,
+# GITHUB_PUBLISH_TOKEN, KRYPTOS_READ_TOKEN (the CI-image kryptos fetch).
+# =============================================================================
+
+default:
+  tags:
+    - docker
+  # Auto-cancel: superseded pipelines are killed on new commits (see
+  # workflow:auto_cancel). Side-effecting jobs opt back out below.
+  interruptible: true
+
+variables:
+  CI_IMAGE: registry.example.com/example-org/argo-apps/ci:latest
+  CI_IMAGE_BASE: registry.example.com/example-org/argo-apps/ci
+  GIT_DEPTH: "50"
+
+stages:
+  - scan
+  - lint
+  - validate
+  - image
+  - mirror
+
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+    - when: never
+
+# -----------------------------------------------------------------------------
+# Shared CI/CD components (homelab/ci-components, pinned below). Each reads this repo's
+# own .config/ rule files + .ci/sanitize/sanitize-config.yaml, and runs on
+# $CI_IMAGE (the argo thin image — since 2.0.0 every component's image input
+# defaults to $CI_IMAGE, so no per-include image line is needed).
+# -----------------------------------------------------------------------------
+include:
+  # Secret scan + per-tool lint (yaml/shell/markdown — three single-job components).
+  - component: source.example.com/homelab/ci-components/scan-secrets@3.0.16
+  - component: source.example.com/homelab/ci-components/lint-yaml@3.0.16
+  - component: source.example.com/homelab/ci-components/lint-shell@3.0.16
+  - component: source.example.com/homelab/ci-components/lint-markdown@3.0.16
+  # Conventional-commit gate on MRs (commit grammar feeds release automation).
+  - component: source.example.com/homelab/ci-components/lint-commits@3.0.16
+
+  # Trivy misconfig scan over raw apps/** (NOT Helm/kustomize-rendered). The
+  # ignorefile input uses the YAML-suffixed file (trivy parses YAML rules only
+  # when the name ends in .yaml), so no script override is needed.
+  - component: source.example.com/homelab/ci-components/trivy-config@3.0.16
+    inputs:
+      job_name: "scan:trivy-config"
+      target: apps
+      ignorefile: .config/.trivyignore.yaml
+      rules:
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+          changes: [apps/**/*, .config/.trivyignore.yaml]
+        - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+          changes: [apps/**/*, .config/.trivyignore.yaml]
+
+  # (no test-ci-scripts: detect_apps.py + validate_app.py are stdlib-only and
+  # have no unit tests; nothing to run.)
+
+  # Build + sign this repo's CI image. The kryptos CLI is fetched in the build
+  # via a BuildKit secret: setup_script writes the token file (from the
+  # KRYPTOS_READ_TOKEN CI/CD variable), build_args passes the matching --secret.
+  - component: source.example.com/homelab/ci-components/ci-image@3.0.16
+    inputs:
+      image_name: example-org/argo-apps/ci
+      changes: [.ci/docker/Dockerfile]
+      setup_script: printf '%s' "$KRYPTOS_READ_TOKEN" > "$CI_PROJECT_DIR/.kryptos_token"
+      build_args: "--secret id=kryptos_token,src=$CI_PROJECT_DIR/.kryptos_token"
+  - component: source.example.com/homelab/ci-components/cosign-sign@3.0.16
+    inputs:
+      job_name: "sign:ci-image"
+      needs_job: "build:ci-image"
+      rules:
+        # Scheduled image rebuilds (SCHEDULE_TYPE=rebuild) must be signed too.
+        - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TYPE == "rebuild"'
+        - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+          changes: [.ci/docker/Dockerfile]
+
+  # SPDX SBOM (syft) attached as a cosign attestation — same ref_file/needs_job
+  # contract as cosign-sign, same trigger rules as sign:ci-image.
+  - component: source.example.com/homelab/ci-components/sbom-attest@3.0.16
+    inputs:
+      job_name: "sbom:ci-image"
+      needs_job: "build:ci-image"
+      # syft lives in ci-base, not in this repo's thin image (and the thin
+      # image lags ci-base by a Renovate digest bump). SBOM generation needs
+      # no repo-specific tools, so run it on ci-base directly.
+      image: registry.example.com/homelab/ci-components/ci:latest
+      rules:
+        - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TYPE == "rebuild"'
+        - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+          changes: [.ci/docker/Dockerfile]
+
+  # GitHub portfolio mirror (ci-base carries the /opt/ci publish tooling).
+  - component: source.example.com/homelab/ci-components/mirror-github@3.0.16
+    inputs:
+      # The /opt/ci publish tooling AND the sanitize-base this repo extends
+      # live in ci-base; the thin image lags ci-base by a digest bump, so
+      # run the mirror on ci-base directly (the pre-2.0 behavior).
+      image: registry.example.com/homelab/ci-components/ci:latest
+      repo_name: argo-apps
+
+# Side-effecting jobs (push/sign/attest/mirror) must not be killed mid-flight
+# by auto_cancel — these partial overrides merge onto the component-generated
+# jobs by name and opt them out of `default: interruptible: true`.
+build:ci-image:
+  interruptible: false
+
+sign:ci-image:
+  interruptible: false
+
+sbom:ci-image:
+  interruptible: false
+
+mirror:github:
+  interruptible: false
+
+# -----------------------------------------------------------------------------
+# Validate changed ArgoCD apps: kustomize build --enable-helm | kubeconform,
+# per changed app dir. Native rules:changes gates the job; detect_apps.py
+# enumerates the changed dirs (dynamic set); validate_app.py loops. No cluster:
+# kubeconform uses the CRDs-catalog baked at /opt/crds-catalog. Argo-only, inline.
+# -----------------------------------------------------------------------------
+validate:apps:
+  stage: validate
+  image: $CI_IMAGE
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &apps-changes
+        - apps/**/*
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+      changes: *apps-changes
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - python3 .ci/scripts/detect_apps.py --output changed-apps.json
+    - cat changed-apps.json
+    - |
+      set -eu
+      count="$(jq 'length' changed-apps.json)"
+      if [ "$count" -eq 0 ]; then
+        echo "no changed apps to validate"; exit 0
+      fi
+      rc=0
+      for d in $(jq -r '.[]' changed-apps.json); do
+        echo "=== validate $d ==="
+        python3 .ci/scripts/validate_app.py "$d" || rc=1
+      done
+      exit $rc
+
+# -----------------------------------------------------------------------------
+# Validate the kryptos secret configs with the kryptos CLI (baked into the CI
+# image from the example-org/kryptos Package Registry). Reads kryptos.toml at the
+# repo root to find kryptos/configs/. Gated on config changes. Argo-only, inline.
+# -----------------------------------------------------------------------------
+validate:kryptos-configs:
+  stage: validate
+  image: $CI_IMAGE
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &kryptos-config-changes
+        - kryptos/configs/**/*
+        - kryptos.toml
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+      changes: *kryptos-config-changes
+  script:
+    - kryptos validate

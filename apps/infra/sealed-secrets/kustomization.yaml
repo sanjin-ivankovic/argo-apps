@@ -1,0 +1,29 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: kube-system
+
+resources:
+  - https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.39.1/controller.yaml
+
+# Override the controller image published by the upstream release manifest.
+# The v0.38.x controller.yaml hardcodes docker.io/bitnami/sealed-secrets-controller,
+# but Bitnami stopped publishing sealed-secrets tags to Docker Hub (tags end at
+# 0.38.1; the Bitnami/Broadcom catalog change retired that namespace), so the
+# hardcoded pull 404s. Repoint to the project's own GHCR registry (cosign-signed,
+# the durable source) pinned by digest for an immutable, reproducible pull. The
+# floating `latest` tag is a label only — the digest is what is pulled — and
+# Renovate maintains the digest (see the custom.regex manager in renovate.json).
+images:
+  - name: docker.io/bitnami/sealed-secrets-controller
+    newName: ghcr.io/bitnami/sealed-secrets-controller
+    # renovate: datasource=docker depName=ghcr.io/bitnami/sealed-secrets-controller
+    newTag: latest
+    digest: sha256:0e5ecab23801caa61b79420488d005377a7264b278c969ee8f78d937daec6931
+
+patches:
+  - path: patches/controller-patch.yaml
+    target:
+      kind: Deployment
+      name: sealed-secrets-controller

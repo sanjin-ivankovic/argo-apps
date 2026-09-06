@@ -1,0 +1,24 @@
+---
+# Maps an OIDC group to Kubernetes cluster-admin. The apiserver prefixes OIDC
+# groups with `oidc:` (claimMappings.groups.prefix in the Talos
+# AuthenticationConfiguration), so a user in Authelia's `admins` group is seen
+# as `oidc:admins`.
+#
+# Users are authorized as their own identity (oidc:<preferred_username>) with
+# audit attribution, not as a ServiceAccount; removing them from the group in
+# the sealed users file revokes access. Requires the apiserver to trust the
+# issuer — see proxmox-infra ansible/talos/patches/controlplane.yaml.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oidc-admins
+  labels:
+    app.kubernetes.io/part-of: headlamp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: "oidc:admins"

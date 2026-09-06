@@ -1,0 +1,19 @@
+---
+# Headlamp UI. Authentication is handled by Headlamp's OWN built-in (token) auth
+# (inCluster: true; see values.yaml) — the user supplies a Kubernetes token on
+# the login screen. No Traefik ForwardAuth gate here.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: headlamp-ingressroute
+  namespace: headlamp
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`headlamp.example.com`)
+      services:
+        - kind: Service
+          name: headlamp
+          port: 80
