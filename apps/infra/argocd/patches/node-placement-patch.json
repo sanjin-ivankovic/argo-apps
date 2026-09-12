@@ -1,0 +1,27 @@
+[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/priorityClassName",
+    "value": "critical-infrastructure"
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/affinity",
+    "value": {
+      "nodeAffinity": {
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+            {
+              "matchExpressions": [
+                {
+                  "key": "node-role.kubernetes.io/worker",
+                  "operator": "Exists"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+]

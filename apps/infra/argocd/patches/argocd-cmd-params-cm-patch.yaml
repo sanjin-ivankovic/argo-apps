@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # Enable insecure mode when accessed through ingress with TLS termination
+  # Traefik terminates TLS, so ArgoCD should accept HTTP from the ingress
+  server.insecure: "true"
+
+  # Fully-qualified (trailing dot) so the gRPC client skips the ndots:5 search
+  # walk. The bare name's final probe, _grpclb._tcp.argocd-repo-server, misses
+  # cluster.local and escapes via CoreDNS's catch-all forward to upstream DNS.
+  repo.server: "argocd-repo-server.argocd.svc.cluster.local.:8081"

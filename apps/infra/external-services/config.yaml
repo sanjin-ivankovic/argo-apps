@@ -1,0 +1,6 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+# Service proxies (Proxmox, UniFi, OpnSense, …) live in the traefik namespace.
+namespace: traefik
+syncWave: "3"
+createNamespace: false

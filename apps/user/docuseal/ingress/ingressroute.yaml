@@ -1,0 +1,28 @@
+---
+# DocuSeal keeps its built-in account login behind the Authentik forward-auth
+# gate (defence in depth). LAN-only — not exposed via the Cloudflare tunnel.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: docuseal-ingressroute
+  namespace: docuseal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`docuseal.example.com`)
+      middlewares:
+        - name: authentik-forwardauth
+          namespace: authentik
+      kind: Rule
+      services:
+        - name: docuseal
+          port: 80
+    # The outpost's own endpoints (login redirect target, callback). Longer
+    # rule wins Traefik's default priority; carries no auth middleware.
+    - match: Host(`docuseal.example.com`) && PathPrefix(`/outpost.goauthentik.io/`)
+      kind: Rule
+      services:
+        - name: authentik-server
+          namespace: authentik
+          port: 80

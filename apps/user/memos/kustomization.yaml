@@ -1,0 +1,17 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: memos
+
+helmCharts:
+  - name: memos
+    repo: oci://registry.example.com/example-org/helm-charts
+    version: 1.0.2
+    releaseName: memos
+    namespace: memos
+    valuesFile: values.yaml
+
+resources:
+  - ingress
+  - secrets

@@ -1,0 +1,36 @@
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: paperless-ngx
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: paperless-ngx
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.10.0.13
+    conditions:
+      ready: true
+ports:
+  - port: 8080
+    name: http
+    protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: paperless-ai
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: paperless-ai
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.10.0.13
+    conditions:
+      ready: true
+ports:
+  - port: 3000
+    name: http
+    protocol: TCP

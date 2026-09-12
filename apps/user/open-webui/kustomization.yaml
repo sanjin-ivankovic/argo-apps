@@ -1,0 +1,17 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: open-webui
+
+helmCharts:
+  - name: open-webui
+    repo: oci://registry.example.com/example-org/helm-charts
+    version: 1.0.4
+    releaseName: open-webui
+    namespace: open-webui
+    valuesFile: values.yaml
+
+resources:
+  - ingress
+  - secrets

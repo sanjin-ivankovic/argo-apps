@@ -1,0 +1,6 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+namespace: searxng
+syncWave: "6"
+createNamespace: true
+autoSync: true

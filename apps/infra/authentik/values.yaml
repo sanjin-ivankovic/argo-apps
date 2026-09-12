@@ -1,0 +1,124 @@
+---
+# ============================================================================
+# Authentik Configuration
+# Helm Chart: authentik 2026.5.6 (upstream, appVersion 2026.5.6)
+# Purpose: SSO portal (https://auth.example.com), Traefik ForwardAuth provider
+#          via the embedded outpost, and OIDC provider. Backed by the shared
+#          PostgreSQL cluster ONLY — since authentik 2025.10 there is no Redis
+#          dependency at all (cache, channels, tasks and outpost sessions are
+#          Postgres-backed), so the shared Valkey is not involved.
+#
+# Providers/applications/outpost config is declarative: blueprint YAML in
+# blueprints/ is mounted into the worker (blueprints.configMaps below) and
+# re-applied on change. Flows, users and MFA enrolment are UI-managed.
+# ============================================================================
+
+global:
+  priorityClassName: high-priority-stateful
+
+  nodeSelector:
+    node-role.kubernetes.io/worker: ''
+
+  # The image runs as the non-root `authentik` user (uid 1000) already. No
+  # readOnlyRootFilesystem: the server writes runtime artifacts (prometheus
+  # multiproc dir, tmp files) inside the container filesystem.
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Secrets arrive as explicit env entries, which take precedence over the
+  # chart-generated envFrom Secret (that Secret skips empty values entirely,
+  # so the empty secret_key/password below never render into it).
+  #
+  # The AUTHENTIK_BOOTSTRAP_* pair acts on FIRST boot only (creates akadmin);
+  # it stays here afterwards as inert documentation of where the break-glass
+  # admin password lives (kryptos/configs/authentik.yaml).
+  #
+  # The *_CLIENT_SECRET vars are consumed by the worker when it applies
+  # blueprints/20-oauth2-providers.yaml (!Env lookups).
+  env:
+    - name: AUTHENTIK_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: authentik-secret
+          key: AUTHENTIK_SECRET_KEY
+    - name: AUTHENTIK_POSTGRESQL__PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: authentik-secret
+          key: AUTHENTIK_POSTGRESQL__PASSWORD
+    - name: AUTHENTIK_BOOTSTRAP_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: authentik-secret
+          key: AUTHENTIK_BOOTSTRAP_PASSWORD
+    - name: AUTHENTIK_BOOTSTRAP_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: authentik-secret
+          key: AUTHENTIK_BOOTSTRAP_TOKEN
+    - name: HEADLAMP_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: authentik-oidc-clients
+          key: HEADLAMP_CLIENT_SECRET
+    - name: OMNI_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: authentik-oidc-clients
+          key: OMNI_CLIENT_SECRET
+    - name: SNAPOTTER_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: authentik-oidc-clients
+          key: SNAPOTTER_CLIENT_SECRET
+
+authentik:
+  # Real value comes from AUTHENTIK_SECRET_KEY above; must stay empty here so
+  # it never lands in the chart-generated Secret.
+  secret_key: ""
+
+  # No SMTP relay exists in the cluster. Password recovery links are minted
+  # from the admin UI (user → "View recovery link") instead of email.
+
+  postgresql:
+    # The database and role are created by
+    # apps/data/postgresql/jobs/authentik-db-create-job.yaml, applied by hand.
+    host: postgresql.postgresql.svc.cluster.local
+    port: 5432
+    name: authentik
+    user: authentik
+    # Real value comes from AUTHENTIK_POSTGRESQL__PASSWORD above.
+    password: ""
+
+blueprints:
+  configMaps:
+    - authentik-blueprints
+
+server:
+  replicas: 1
+  # The chart's ingress stays off; routing is a Traefik IngressRoute in
+  # ingress/.
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 150m
+      memory: 700Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+
+worker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1536Mi

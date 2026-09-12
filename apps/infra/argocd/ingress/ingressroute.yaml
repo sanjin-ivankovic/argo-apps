@@ -1,0 +1,31 @@
+---
+# ArgoCD server UI/API. ArgoCD handles authentication itself (built-in admin
+# login); no Traefik ForwardAuth gate here. Two routes: the default HTTP route,
+# plus a higher-priority h2c route for gRPC clients (argocd CLI).
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: argocd-ingressroute
+  namespace: argocd
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`argo.example.com`)
+      priority: 10
+      services:
+        - kind: Service
+          name: argocd-server
+          port: 80
+    # gRPC (argocd CLI) — matched by Content-Type, served over h2c.
+    - kind: Rule
+      match: >
+        Host(`argo.example.com`) &&
+        Header(`Content-Type`, `application/grpc`)
+      priority: 11
+      services:
+        - kind: Service
+          name: argocd-server
+          port: 80
+          scheme: h2c

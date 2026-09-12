@@ -1,0 +1,49 @@
+---
+# Read-only access to the wildcard cert for the Omni host's daily cert-sync
+# cron (proxmox-infra ansible/playbooks/hosts/omni-cert-sync.yml). Omni
+# terminates TLS itself from file copies in /srv/omni-secrets/; the cron
+# pulls this secret through the apiserver and restarts Omni when the cert
+# rotates. Scoped to the single secret by resourceNames.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: omni-cert-sync
+  namespace: traefik
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: omni-cert-sync
+  namespace: traefik
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["example-com-wildcard-tls"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: omni-cert-sync
+  namespace: traefik
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: omni-cert-sync
+subjects:
+  - kind: ServiceAccount
+    name: omni-cert-sync
+    namespace: traefik
+---
+# Long-lived token for the cron (kubernetes.io/service-account-token — the
+# controller fills in `token` and `ca.crt`). The value is mirrored into the
+# proxmox-infra vault as vault_omni_cert_sync_token and lands on the omni
+# host as /srv/omni-secrets/cert-sync-token.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: omni-cert-sync-token
+  namespace: traefik
+  annotations:
+    kubernetes.io/service-account.name: omni-cert-sync
+type: kubernetes.io/service-account-token

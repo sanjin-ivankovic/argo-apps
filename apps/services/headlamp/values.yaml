@@ -1,0 +1,84 @@
+---
+# ============================================================================
+# Headlamp Configuration
+# Helm Chart: headlamp 0.43.0 (kubernetes-sigs)
+# Purpose: Single-cluster Kubernetes web UI with per-user OIDC login via
+#          Authentik (each user's own kube-RBAC; see the auth model below).
+# ============================================================================
+#
+# Auth model (per-user OIDC via Authentik):
+#   - Headlamp authenticates the USER via the Authentik `headlamp` OIDC client
+#     and forwards the user's id_token to the Kubernetes API. The Talos
+#     apiserver trusts the Authentik issuer (machine.files
+#     authentication-config.yaml in proxmox-infra
+#     ansible/talos/patches/controlplane.yaml), so API calls are authorized as
+#     the user (oidc:<preferred_username>) with full audit attribution.
+#   - RBAC: members of Authentik's `admins` group (seen by the apiserver as
+#     `oidc:admins`) get cluster-admin via base/oidc-admin-binding.yaml.
+#   - The pod ServiceAccount is NOT used for user requests, so it gets no RBAC.
+#     Cert-based kubeconfig remains the break-glass fallback if the IdP or
+#     ingress is down.
+# ============================================================================
+
+replicaCount: 1
+
+config:
+  # In-cluster: Headlamp talks to the in-cluster apiserver, forwarding the
+  # user's OIDC id_token (NOT a ServiceAccount token).
+  inCluster: true
+  # Served at subdomain root (headlamp.example.com/), so no baseURL.
+  baseURL: ""
+  oidc:
+    # Sensitive client_id/client_secret come from the headlamp-oidc SealedSecret
+    # (keys OIDC_CLIENT_ID / OIDC_CLIENT_SECRET) loaded via externalSecret.
+    externalSecret:
+      enabled: true
+      name: headlamp-oidc
+      # LOAD-BEARING. The chart only emits the `-oidc-scopes` arg for an
+      # external secret when this is true; the default drops it, so Headlamp
+      # requests only openid/profile/email, the `groups` claim never arrives,
+      # and the oidc:admins → cluster-admin binding silently stops matching.
+      hasScopes: true
+    # Suppress the chart's auto-created empty `oidc` Secret (we bring our own).
+    secret:
+      create: false
+
+# Non-sensitive OIDC settings as plain env. Authentik issuers are per
+# application (/application/o/<slug>/, trailing slash included) and must match
+# the `iss` claim byte-for-byte — the apiserver compares it verbatim against
+# the AuthenticationConfiguration. The custom `groups` scope mapping in the
+# Authentik blueprint keeps the groups claim flowing with this scope list.
+env:
+  - name: OIDC_ISSUER_URL
+    value: "https://auth.example.com/application/o/headlamp/"
+  - name: OIDC_SCOPES
+    value: "openid,profile,email,groups"
+  - name: OIDC_CALLBACK_URL
+    value: "https://headlamp.example.com/oidc-callback"
+  # Authentik has no require_pkce toggle but accepts S256 whenever the client
+  # sends it — keep PKCE on. Set as plain env because config.oidc.usePKCE
+  # expects a key in the chart-managed Secret, which externalSecret +
+  # secret.create:false does not create.
+  - name: OIDC_USE_PKCE
+    value: "true"
+
+# The ServiceAccount is not used for user requests, so it gets no cluster RBAC.
+serviceAccount:
+  create: true
+
+clusterRoleBinding:
+  create: false
+
+# Chart ingress disabled — we use a Traefik IngressRoute (see ingress/).
+ingress:
+  enabled: false
+
+# Priority class for critical infrastructure UIs.
+priorityClassName: critical-infrastructure
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi

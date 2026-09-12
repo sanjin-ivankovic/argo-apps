@@ -1,0 +1,123 @@
+# LOCAL developer hooks only. CI does NOT run pre-commit — the equivalent
+# checks run as native jobs in .gitlab-ci.yml (scan:secrets, lint:yaml/shell/
+# markdown, validate:apps, test:ci-scripts). Run `make setup` (or
+# `pre-commit install`) locally for fast feedback; CI is the authoritative gate.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        # --allow-multiple-documents: k8s manifests use multi-doc YAML
+        #   (--- separators); without this, check-yaml fails on them.
+        # --unsafe: parse syntax only, don't construct Python objects.
+        #   Required for blueprints that use Symfony-style custom tags
+        #   !Find / !Format / !Context
+        #   that check-yaml otherwise rejects ("could not determine a
+        #   constructor"). Trade-off: --unsafe is repo-wide, so it only
+        #   validates YAML *syntax* (not that docs load) everywhere — the
+        #   yamllint hook below still does the deeper structural checks.
+        args: ['--allow-multiple-documents', '--unsafe']
+        # Excludes:
+        #   argocd/apps-set.yaml — goTemplate manifest whose
+        #     {{- if }}/{{- range }} directives sit at the YAML structural
+        #     level (the ApplicationSet controller renders them before parse),
+        #     so even --unsafe fails.
+        #   .archive/ — frozen legacy content, not lint-enforced (yamllint skips
+        #     it too; gitleaks still scans it for secrets).
+        exclude: '^(argocd/apps-set\.yaml$|\.archive/)'
+      - id: check-added-large-files
+        # Block accidentally committing big blobs (vendored binaries, dumps).
+        # 500kb is comfortably above our largest legit file (sealed secrets).
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: detect-private-key
+      # Catch filenames that collide on case-insensitive filesystems
+      # (macOS/Windows) — silent data loss on checkout otherwise.
+      - id: check-case-conflict
+      # Normalize to LF; a CRLF sneaking in breaks shell scripts + diffs.
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      # A non-executable script (or executable non-script) is a latent bug.
+      # Exclude vendored .claude/ skill docs (we don't manage their perms;
+      # overwritten on plugin update) and .archive/ (frozen legacy scripts).
+      - id: check-executables-have-shebangs
+        exclude: '^(\.claude/|\.archive/)'
+      - id: check-shebang-scripts-are-executable
+        exclude: '^(\.claude/|\.archive/)'
+      # Validate JSON syntax (renovate.json, kubeconform schemas, etc.).
+      - id: check-json
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        # -c: centralize rules in .config/ (shared with CI + the VS Code
+        #   yamllint extension) instead of a root .yamllint.
+        args: ['-c', '.config/.yamllint']
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.2
+    hooks:
+      - id: markdownlint-cli2
+        # --config: same .config/ file the VS Code markdownlint extension
+        #   uses (see .vscode/settings.json) — one rule set, editor + CI.
+        args: ['--config', '.config/.markdownlint-cli2.jsonc']
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        # commit-msg stage: validates the commit MESSAGE, not files — so it
+        #   runs on `git commit`, and `pre-commit run --all-files` (the CI
+        #   model, default `pre-commit` stage) correctly skips it.
+        stages: [commit-msg]
+        # Positional args = the allowed Conventional Commit types. Mirrors
+        #   the types the git-commit skill emits.
+        args: ['feat', 'fix', 'docs', 'refactor', 'chore', 'test', 'ci', 'build']
+
+  # Local system hooks — these call binaries baked into the CI image
+  # (and present locally) instead of letting pre-commit build them at
+  # runtime. The upstream gitleaks hook is `language: golang` (compiles
+  # from source) and shellcheck-precommit is `language: docker_image`
+  # (needs a Docker daemon) — neither runs in the Argo emissary
+  # container. `language: system` reuses the pinned binary, so the image
+  # build-args are the single version source (Renovate already tracks
+  # them: GITLEAKS_VERSION, SHELLCHECK_VERSION in .ci/docker/Dockerfile).
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (system)
+        # `git` (history) mode scans TRACKED content and respects
+        # .gitignore — matching the archived scan_secrets.py
+        # (`gitleaks detect --source .`, git mode). NOT `gitleaks dir`,
+        # which also scans untracked/gitignored files and reports false
+        # positives. Same .config/.gitleaks.toml + ignore the wrapper used.
+        # --platform: gitleaks only supports github/gitlab as values for
+        # clickable-finding-link URL generation. source.example.com is GitLab,
+        # whose commit links use the `/-/commit/<sha>#L<line>` shape, so
+        # `gitlab` generates the correct URL — clicking a finding in the CI
+        # log opens the file at the right line on source.example.com.
+        entry: gitleaks git --platform=gitlab --config .config/.gitleaks.toml --gitleaks-ignore-path .config/.gitleaksignore --redact --verbose --exit-code 1 .
+        language: system
+        pass_filenames: false
+      - id: shellcheck
+        name: shellcheck (system)
+        entry: shellcheck --rcfile=.config/.shellcheckrc
+        language: system
+        types: [shell]
+        # .archive/ holds frozen legacy scripts — not lint-enforced.
+        exclude: '^\.archive/'
+
+      # kryptos config validation. The kryptos ENGINE now lives in its own repo
+      # (source.example.com/example-org/kryptos); only the configs stay here. Validate
+      # them with a released kryptos binary if one is on PATH, else no-op (so a
+      # contributor without the binary, and the Go-less CI image, don't fail).
+      # Install the binary from the kryptos releases page to enable this locally.
+      - id: kryptos-validate
+        name: kryptos validate (configs)
+        entry: bash -c 'command -v kryptos >/dev/null 2>&1 || { echo "kryptos binary not on PATH; skipping config validation (install from source.example.com/example-org/kryptos/releases)"; exit 0; }; kryptos validate'
+        language: system
+        files: '^kryptos/configs/.*\.ya?ml$'
+        pass_filenames: false

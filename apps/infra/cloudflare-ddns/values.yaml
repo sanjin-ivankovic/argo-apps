@@ -1,0 +1,73 @@
+---
+# ============================================================================
+# Cloudflare DDNS Configuration
+# Helm Chart: cloudflare-ddns 1.0.0 (homelab custom chart)
+# Purpose: Keeps Cloudflare DNS records pointed at the current public IP.
+#          Replaces the UniFi OS built-in DDNS client.
+# ============================================================================
+
+# ============================================================================
+# Deployment Configuration
+# ============================================================================
+
+# Singleton: upstream has no leader election, so a second replica would race
+# on the same DNS records. Recreate avoids the two-pod overlap on rollout.
+replicaCount: 1
+
+updateStrategy:
+  type: Recreate
+
+# ============================================================================
+# Node Placement
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Schedule on worker nodes.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+tolerations: []
+
+# ============================================================================
+# Resource Management
+# ============================================================================
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 64Mi
+  requests:
+    cpu: 10m
+    memory: 16Mi
+
+# ============================================================================
+# Application Configuration
+# ============================================================================
+
+env:
+  # Comma-separated list of records to keep pointed at the current public IP.
+  DOMAINS: "wg.example.com"
+
+  # DNS-only. Proxying through the Cloudflare edge would hide the origin IP
+  # but break every non-HTTP port this address serves.
+  PROXIED: "false"
+
+  # IPv4-only cluster. `none` also preserves any existing AAAA records
+  # instead of deleting them.
+  IP6_PROVIDER: "none"
+
+  TZ: "Europe/Berlin"
+
+# ============================================================================
+# Secrets
+# ============================================================================
+
+# Cloudflare API token, scoped to Zone:DNS:Edit. Mounted as a file and read
+# via CLOUDFLARE_API_TOKEN_FILE so it never lands in the pod environment.
+existingSecret: "cloudflare-ddns-api"

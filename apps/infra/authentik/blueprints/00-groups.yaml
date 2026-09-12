@@ -1,0 +1,17 @@
+# yamllint disable-file
+---
+version: 1
+metadata:
+  name: homelab-groups
+  labels:
+    blueprints.goauthentik.io/description: Groups referenced by app access bindings and the oidc:admins ClusterRoleBinding
+entries:
+  # The name must stay exactly `admins`: it is what every application access
+  # binding matches on, what the groups claim emits, and what the Kubernetes
+  # apiserver maps to oidc:admins (apps/services/headlamp/base/
+  # oidc-admin-binding.yaml). is_superuser stays false — authentik admin
+  # rights are granted per-user in the UI, not through this group.
+  - model: authentik_core.group
+    state: present
+    identifiers:
+      name: admins

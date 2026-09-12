@@ -1,0 +1,21 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: valkey
+
+# Custom homelab chart (official valkey/valkey image). A Valkey MAJOR bump is
+# a planned migration, never a routine chart bump — Renovate is capped at <10
+# on the chart image (helm-charts renovate.json); the chart is vendored under
+# charts/ because its OCI source is the in-cluster Harbor (see .gitignore).
+helmCharts:
+  - name: valkey
+    repo: oci://registry.example.com/example-org/helm-charts
+    version: 1.0.0
+    releaseName: valkey
+    namespace: valkey
+    valuesFile: values.yaml
+
+resources:
+  - base
+  - secrets
