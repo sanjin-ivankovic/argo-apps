@@ -1,0 +1,212 @@
+# yamllint disable-file
+---
+# OIDC providers for the three clients migrated from Authelia. client_ids are
+# load-bearing (the Talos apiserver audience is `headlamp`; Omni and SnapOtter
+# configs pin theirs) and must not change. Client secrets resolve at apply
+# time from worker env vars (values.yaml global.env ← authentik-oidc-clients).
+#
+# The issuer each consumer must configure is per application:
+#   https://auth.example.com/application/o/<slug>/
+#
+# PKCE note: authentik accepts S256 PKCE whenever the client sends it
+# (Headlamp does) but has no per-provider require_pkce toggle — accepted
+# minor regression vs Authelia.
+version: 1
+metadata:
+  name: homelab-oauth2-providers
+  labels:
+    blueprints.goauthentik.io/description: OIDC providers for Headlamp, Omni and SnapOtter
+entries:
+  # Blueprint files are not discovered in a guaranteed order; force the groups
+  # blueprint first so the admins !Find below always resolves.
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: homelab-groups
+      required: true
+
+  # --- Scope mappings -------------------------------------------------------
+  # authentik has no built-in `groups` scope (groups normally ride in
+  # `profile`); Headlamp requests `openid profile email groups` and the Talos
+  # apiserver maps the `groups` claim, so provide the scope explicitly and
+  # keep every consumer's scope list unchanged.
+  - model: authentik_providers_oauth2.scopemapping
+    id: scope-groups
+    state: present
+    identifiers:
+      name: 'homelab: groups claim'
+    attrs:
+      scope_name: groups
+      description: Group membership
+      expression: |
+        return {
+            "groups": [group.name for group in request.user.ak_groups.all()],
+        }
+
+  # Since authentik 2025.10 the stock email scope reports
+  # email_verified: false (no verification source exists). Omni hard-rejects
+  # unverified emails ("invalid jwt: email not verified") — same reason
+  # Authelia anchored the claim to the admins group — so override the email
+  # scope with a mapping that asserts verified. Every account here is
+  # admin-created, which is the verification.
+  - model: authentik_providers_oauth2.scopemapping
+    id: scope-email-verified
+    state: present
+    identifiers:
+      name: 'homelab: email claim (verified)'
+    attrs:
+      scope_name: email
+      description: Email address, asserted verified (admin-created accounts)
+      expression: |
+        return {
+            "email": request.user.email,
+            "email_verified": True,
+        }
+
+  # --- Headlamp --------------------------------------------------------------
+  # Forwards its id_token to the Kubernetes apiserver, so per-user cluster
+  # RBAC hangs off this provider: the apiserver trusts issuer
+  # https://auth.example.com/application/o/headlamp/ with audience `headlamp`
+  # and maps preferred_username/groups with an `oidc:` prefix
+  # (proxmox-infra ansible/talos/patches/controlplane.yaml). Dropping the
+  # groups mapping silently revokes cluster-admin.
+  - model: authentik_providers_oauth2.oauth2provider
+    id: headlamp-provider
+    state: present
+    identifiers:
+      name: headlamp-oidc
+    attrs:
+      client_type: confidential
+      # 2026.x providers reject every authorize request when this list is
+      # empty ("Invalid grant_type for provider"), so it must be explicit.
+      grant_types:
+        - authorization_code
+        - refresh_token
+      client_id: headlamp
+      client_secret: !Env HEADLAMP_CLIENT_SECRET
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      sub_mode: user_username
+      # The apiserver reads claims straight out of the id_token and never
+      # calls UserInfo.
+      include_claims_in_id_token: true
+      redirect_uris:
+        - matching_mode: strict
+          url: https://headlamp.example.com/oidc-callback
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+        - !KeyOf scope-email-verified
+        - !KeyOf scope-groups
+  - model: authentik_core.application
+    id: headlamp-app
+    state: present
+    identifiers:
+      slug: headlamp
+    attrs:
+      name: Headlamp
+      provider: !KeyOf headlamp-provider
+      meta_launch_url: https://headlamp.example.com
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf headlamp-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0
+
+  # --- Sidero Omni ------------------------------------------------------------
+  # Runs outside the cluster on the omni LXC (proxmox-infra services/omni/).
+  # Identifies users by email (--initial-users), so the email claim must reach
+  # it in the id_token — and must be marked verified (mapping above).
+  - model: authentik_providers_oauth2.oauth2provider
+    id: omni-provider
+    state: present
+    identifiers:
+      name: omni-oidc
+    attrs:
+      client_type: confidential
+      # 2026.x providers reject every authorize request when this list is
+      # empty ("Invalid grant_type for provider"), so it must be explicit.
+      grant_types:
+        - authorization_code
+        - refresh_token
+      client_id: omni
+      client_secret: !Env OMNI_CLIENT_SECRET
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      sub_mode: user_username
+      include_claims_in_id_token: true
+      redirect_uris:
+        - matching_mode: strict
+          url: https://omni.example.com/oidc/consume
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+        - !KeyOf scope-email-verified
+        - !KeyOf scope-groups
+  - model: authentik_core.application
+    id: omni-app
+    state: present
+    identifiers:
+      slug: omni
+    attrs:
+      name: Sidero Omni
+      provider: !KeyOf omni-provider
+      meta_launch_url: https://omni.example.com
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf omni-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0
+
+  # --- SnapOtter ---------------------------------------------------------------
+  # apps/user/snapotter authenticates its own users through this provider
+  # instead of a forward-auth middleware on its IngressRoute.
+  - model: authentik_providers_oauth2.oauth2provider
+    id: snapotter-provider
+    state: present
+    identifiers:
+      name: snapotter-oidc
+    attrs:
+      client_type: confidential
+      # 2026.x providers reject every authorize request when this list is
+      # empty ("Invalid grant_type for provider"), so it must be explicit.
+      grant_types:
+        - authorization_code
+        - refresh_token
+      client_id: snapotter
+      client_secret: !Env SNAPOTTER_CLIENT_SECRET
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      sub_mode: user_username
+      include_claims_in_id_token: true
+      redirect_uris:
+        - matching_mode: strict
+          url: https://snapotter.example.com/api/auth/oidc/callback
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+        - !KeyOf scope-email-verified
+        - !KeyOf scope-groups
+  - model: authentik_core.application
+    id: snapotter-app
+    state: present
+    identifiers:
+      slug: snapotter
+    attrs:
+      name: SnapOtter
+      provider: !KeyOf snapotter-provider
+      meta_launch_url: https://snapotter.example.com
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf snapotter-app
+      group: !Find [authentik_core.group, [name, admins]]
+    attrs:
+      order: 0

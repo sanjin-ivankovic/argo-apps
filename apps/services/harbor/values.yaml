@@ -1,0 +1,196 @@
+---
+# ============================================================================
+# Harbor Configuration
+# Helm Chart: harbor 1.19.1 (Harbor, app v2.15.0)
+# Purpose: Private OCI registry — hosts container images and the homelab Helm
+#          charts. Served at registry.example.com (primary) + registry.example.com.
+# ============================================================================
+#
+# Architecture:
+#   - Traefik IngressRoute terminates TLS upstream; this chart exposes
+#     ClusterIP services only.
+#   - Postgres reuses the shared apps/data/postgresql install (DB + role
+#     provisioned by apps/data/postgresql/jobs/harbor-database-create-job.yaml).
+#   - Redis uses the chart's bundled internal redis-photon (see redis: below).
+#   - All secrets are kryptos-managed sealed-secrets under ./secrets/.
+# ============================================================================
+
+# ============================================================================
+# Exposure (Traefik handles TLS; Harbor is internal ClusterIP only)
+# ============================================================================
+
+expose:
+  type: clusterIP
+  tls:
+    enabled: false
+  clusterIP:
+    name: harbor
+    ports:
+      httpPort: 80
+
+externalURL: https://registry.example.com
+
+# ============================================================================
+# Update Strategy & Admin Credentials
+# ============================================================================
+
+# IMPORTANT: harbor-jobservice and harbor-registry mount RWO Longhorn PVCs.
+# The chart's default `updateStrategy.type: RollingUpdate` is incompatible
+# with RWO — during any sync that creates a new ReplicaSet, the old pod
+# keeps the volume mounted while the new pod is created, and the new pod
+# gets stuck in `FailedAttachVolume: Multi-Attach error`. The chart's
+# README explicitly recommends `Recreate` when RWM is unavailable.
+updateStrategy:
+  type: Recreate
+
+# Wire the admin password from our kryptos-sealed harbor-core-secret.
+# IMPORTANT: this is a SEPARATE chart mechanism from `core.existingSecret`.
+# Without these two values, the chart falls back to the bundled
+# `harbor-core` Secret which contains the upstream default password
+# "Harbor12345" (and that's what gets seeded into the DB on first boot —
+# see harbor-helm v1.19.0 templates/core/core-dpl.yaml lines wrapping
+# `existingSecretAdminPassword`).
+existingSecretAdminPassword: "harbor-core-secret"
+existingSecretAdminPasswordKey: "HARBOR_ADMIN_PASSWORD"
+
+# ============================================================================
+# Persistence (Longhorn-backed)
+# ============================================================================
+
+persistence:
+  enabled: true
+  resourcePolicy: "keep"
+  persistentVolumeClaim:
+    # Harbor PVCs hold reproducible data (image cache, job logs, scan cache) on
+    # the default longhorn class (3 replicas). storageClassName is immutable on
+    # an existing PVC, so any replica-count change is made live in the Longhorn
+    # UI (Volume -> Update Replica Count), not by editing the class here.
+    registry:
+      storageClass: "longhorn"
+      accessMode: ReadWriteOnce
+      size: 50Gi
+    jobservice:
+      jobLog:
+        storageClass: "longhorn"
+        accessMode: ReadWriteOnce
+        size: 5Gi
+    redis:
+      # PVC for the chart-bundled harbor-redis StatefulSet. Keep small.
+      storageClass: "longhorn"
+      accessMode: ReadWriteOnce
+      size: 1Gi
+    trivy:
+      storageClass: "longhorn"
+      accessMode: ReadWriteOnce
+      size: 10Gi
+
+# ============================================================================
+# External Postgres (shared cluster postgresql)
+# ============================================================================
+# Credentials live in harbor-db-secret (kryptos: kryptos/configs/harbor.yaml).
+database:
+  type: external
+  external:
+    host: "postgresql.postgresql.svc.cluster.local"
+    port: "5432"
+    username: "harbor"
+    coreDatabase: "harbor"
+    sslmode: "disable"
+    existingSecret: "harbor-db-secret"
+
+# ============================================================================
+# Internal Redis (chart-bundled goharbor/redis-photon)
+# ============================================================================
+# Harbor uses its own chart-bundled Redis rather than the shared cluster
+# Valkey. The chart's external-Redis auth relies on a Helm `lookup` that
+# returns empty under offline `helm template` (ArgoCD/kustomize-helm) — see
+# argoproj/argo-cd #5202, goharbor/harbor#20647 — which would leave every
+# component's Redis URL password-less and fail the Trivy scanner with "NOAUTH
+# Authentication required" (500). Internal Redis sidesteps this: the chart
+# deploys an auth-less harbor-redis StatefulSet and renders every Redis URL to
+# it automatically — no password, no lookup, no patches, no sealed secrets.
+# Trade-off: one dedicated Redis pod instead of reusing shared Valkey.
+redis:
+  type: internal
+  internal:
+    priorityClassName: critical-infrastructure
+    nodeSelector:
+      node-role.kubernetes.io/worker: ""
+
+# ============================================================================
+# Bundled Subchart Postgres (disabled — shared cluster is used)
+# ============================================================================
+
+postgresql:
+  enabled: false
+
+# ============================================================================
+# Component Config (existingSecrets, resources, scheduling)
+# ============================================================================
+# All Harbor pods are pinned to worker nodes with critical-infrastructure
+# priority.
+core:
+  existingSecret: "harbor-core-secret"
+  existingXsrfSecret: "harbor-core-secret"
+  priorityClassName: critical-infrastructure
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1,    memory: 512Mi }
+
+jobservice:
+  existingSecret: "harbor-jobservice-secret"
+  priorityClassName: critical-infrastructure
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 384Mi }
+
+portal:
+  priorityClassName: critical-infrastructure
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 128Mi }
+
+registry:
+  existingSecret: "harbor-registry-secret"
+  credentials:
+    username: "harbor_registry_user"
+    # IMPORTANT: this secret must contain BOTH `REGISTRY_PASSWD` (plaintext,
+    # consumed by core) and `REGISTRY_HTPASSWD` (bcrypted, mounted by the
+    # registry container at /etc/registry/passwd). kryptos auto-derives the
+    # htpasswd line from the plaintext — see configs/harbor.yaml.
+    existingSecret: "harbor-registry-htpasswd"
+  priorityClassName: critical-infrastructure
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  registry:
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 1,    memory: 512Mi }
+  controller:
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 200m, memory: 128Mi }
+
+trivy:
+  enabled: true
+  skipUpdate: false
+  gitHubToken: ""
+  priorityClassName: critical-infrastructure
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1,    memory: 768Mi }
+exporter:
+  priorityClassName: critical-infrastructure
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 128Mi }

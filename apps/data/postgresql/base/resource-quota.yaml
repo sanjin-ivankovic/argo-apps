@@ -1,0 +1,25 @@
+---
+# Resource Quota for PostgreSQL Namespace
+# Ensures database workloads don't consume excessive cluster resources
+
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: postgresql-quota
+  namespace: postgresql
+spec:
+  hard:
+    # CPU limits
+    requests.cpu: "4"
+    limits.cpu: "8"
+
+    # Memory limits
+    requests.memory: "8Gi"
+    limits.memory: "16Gi"
+
+    # Storage limits
+    persistentvolumeclaims: "10"
+    requests.storage: "100Gi"
+
+    # Pod limits
+    pods: "20"

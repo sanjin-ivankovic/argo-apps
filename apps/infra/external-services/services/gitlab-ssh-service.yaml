@@ -1,0 +1,24 @@
+---
+# GitLab git-over-SSH. Selectorless LoadBalancer sharing the git VIP
+# (10.10.0.67) with Traefik via the `git-shared-ip` key. GitLab owns the
+# canonical SSH port 22; kube-proxy NATs external :22 to the GitLab LXC's
+# host port 2222 (where the
+# gitlab container publishes — the LXC's own sshd keeps :22) via the
+# EndpointSlice (which stays on 2222). externalTrafficPolicy: Cluster is
+# required for MetalLB IP sharing.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitlab-ssh-lb
+  namespace: traefik
+  annotations:
+    metallb.io/loadBalancerIPs: "10.10.0.67"
+    metallb.io/allow-shared-ip: "git-shared-ip"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Cluster
+  ports:
+    - name: git-ssh
+      protocol: TCP
+      port: 22
+      targetPort: 2222 # LXC host port the gitlab container publishes (EndpointSlice)

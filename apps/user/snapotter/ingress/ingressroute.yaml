@@ -1,0 +1,18 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: snapotter-ingressroute
+  namespace: snapotter
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`snapotter.example.com`)
+      # No authentik-forwardauth middleware: SnapOtter runs its own multi-user
+      # auth and logs in via Authentik's OIDC provider instead.
+      services:
+        - kind: Service
+          name: snapotter
+          port: 80

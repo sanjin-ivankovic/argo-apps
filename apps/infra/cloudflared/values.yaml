@@ -1,0 +1,110 @@
+---
+# ============================================================================
+# Cloudflared Configuration
+# Helm Chart: cloudflared 1.0.2 (homelab custom chart)
+# Purpose: Cloudflare Tunnel client — exposes selected services to the public
+#          internet over an outbound tunnel (no inbound ports opened).
+# ============================================================================
+
+# ============================================================================
+# Deployment Configuration
+# ============================================================================
+
+replicaCount: 1
+
+# Zero-downtime rolling update: add a pod before removing one.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# ============================================================================
+# Node Placement
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Schedule on worker nodes.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+tolerations: []
+
+# ============================================================================
+# Resource Management
+# ============================================================================
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+
+# Log level: debug, info, warn, error, fatal.
+logLevel: info
+
+# ============================================================================
+# Managed Tunnel Configuration (Cloudflare Zero Trust)
+# ============================================================================
+
+# Tunnel defined in the Cloudflare Zero Trust dashboard. The tunnel token is
+# supplied via the sealed secret below — never set `token` inline.
+managed:
+  enabled: true
+  existingSecret: "cloudflared-tunnel-token"
+
+# ============================================================================
+# Local Tunnel Configuration (Alternative)
+# ============================================================================
+
+# Locally-defined tunnel; disabled while the managed tunnel above is in use.
+local:
+  enabled: false
+  # auth:
+  #   tunnelID: ""
+  #   accountTag: ""
+  #   tunnelName: ""
+  #   tunnelSecret: ""
+  #   existingSecret: ""
+  # warpRouting: false
+  # ingress: []
+
+# ============================================================================
+# Metrics & Monitoring
+# ============================================================================
+
+metrics:
+  enabled: false
+  # port: "8080"
+
+# ============================================================================
+# Autoscaling Configuration
+# ============================================================================
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetMemoryUtilizationPercentage: 80
+  targetCPUUtilizationPercentage: 80
+
+# ============================================================================
+# High Availability
+# ============================================================================
+
+# Disabled — replica count is managed manually (single replica above).
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1

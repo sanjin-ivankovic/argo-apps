@@ -1,0 +1,55 @@
+---
+# ============================================================================
+# Longhorn Configuration
+# Helm Chart: longhorn 1.12.0 (Longhorn)
+# Purpose: Distributed block storage and the cluster's default StorageClass
+#          (3 replicas) for all PersistentVolumeClaims.
+# ============================================================================
+
+# ============================================================================
+# Global Node Placement & Scheduling
+# ============================================================================
+
+# Longhorn user-deployed components (UI, Manager, Driver Deployer)
+# These are control-plane components for storage management
+longhornManager:
+  priorityClassName: critical-infrastructure
+
+longhornDriver:
+  priorityClassName: critical-infrastructure
+
+longhornUI:
+  # Homelab UI does not need HA; one replica is enough and frees a pod.
+  replicas: 1
+  priorityClassName: critical-infrastructure
+
+# Nothing here tolerates the control-plane taint, so Longhorn runs on workers
+# only. Tolerating it would put instance-managers back on the CP, where they are
+# pinned per-node and cannot be selected away.
+defaultSettings:
+  # Storage placement: ONLY worker nodes hold Longhorn replicas/disks.
+  # Workers carry node.longhorn.io/create-default-disk=true (set natively via
+  # Talos machine.nodeLabels in proxmox-infra worker.yaml); with this setting,
+  # Longhorn auto-creates default disks ONLY on labeled nodes. Control-plane
+  # nodes get no disk, so replica I/O never competes with etcd fsync on the CP
+  # disk — keeping etcd health-checks stable (contention there flaps etcd and
+  # crashloops the control plane after reboots/upgrades).
+  #
+  # Existing CP nodes were additionally drained + set allowScheduling=false on
+  # their Longhorn Node CRs (runtime). This label+setting combination is the
+  # reinstall-proof guard going forward.
+  createDefaultDiskLabeledNodes: true
+
+  # Reserve a smaller CPU floor per instance-manager. The chart default (12%)
+  # reserved ~2.5 cores cluster-wide that the scheduler treated as unavailable
+  # while actual instance-manager CPU use stays well under it. 5% keeps a floor
+  # for replica I/O while returning ~1.4 cores of allocatable to the cluster.
+  guaranteedInstanceManagerCPU: "5"
+
+# ============================================================================
+# Pre-Upgrade Checker Configuration
+# ============================================================================
+
+preUpgradeChecker:
+  jobEnabled: true # Enable/Disable pre-upgrade check job
+  upgradeVersionCheck: true # Version compatibility check

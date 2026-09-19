@@ -1,0 +1,17 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: unraid-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`unraid.example.com`)
+      services:
+        - kind: Service
+          name: unraid
+          port: 80
+          scheme: http

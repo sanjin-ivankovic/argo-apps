@@ -1,0 +1,20 @@
+---
+# Harbor handles authentication itself (built-in admin + robot accounts). No
+# Traefik ForwardAuth gate here.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: harbor-ingressroute
+  namespace: harbor
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    # Harbor portal + docker registry v2 API (both served by harbor-core).
+    # registry.example.com is the primary endpoint; registry.example.com is a
+    # stable alias.
+    - match: Host(`registry.example.com`) || Host(`registry.example.com`)
+      kind: Rule
+      services:
+        - name: harbor
+          port: 80
