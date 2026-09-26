@@ -1,0 +1,60 @@
+---
+# Open WebUI (built-in auth — NO ForwardAuth middleware).
+#
+# Open WebUI handles authentication itself via its built-in login form
+# (ENABLE_LOGIN_FORM=true; see values.yaml). No Traefik ForwardAuth gate here —
+# Open WebUI's own auth is the single gate.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: open-webui-ingressroute
+  namespace: open-webui
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`open-webui.example.com`)
+      services:
+        - kind: Service
+          name: open-webui
+          port: 8080
+---
+# Open WebUI — external (work) access via the Cloudflare tunnel, gated behind
+# the Authentik ForwardAuth SSO IN ADDITION to Open WebUI's built-in login
+# (defense in depth). The internal open-webui.example.com route (above) keeps
+# built-in login only; only this chat.example.com host is published as a tunnel
+# public hostname, so all external traffic passes through SSO. The login
+# redirect targets auth.example.com, which must also be a tunnel public
+# hostname or external visitors cannot complete the flow.
+#
+# Requires the matching chat proxy provider in
+# apps/infra/authentik/blueprints/10-proxy-providers.yaml — a host with no
+# provider is a 404 from the outpost, so the pair must move together.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: open-webui-external-ingressroute
+  namespace: open-webui
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`chat.example.com`)
+      middlewares:
+        - name: authentik-forwardauth
+          namespace: authentik
+      services:
+        - kind: Service
+          name: open-webui
+          port: 8080
+    # The outpost's own endpoints (login redirect target, callback). Longer
+    # rule wins Traefik's default priority; carries no auth middleware.
+    - kind: Rule
+      match: Host(`chat.example.com`) && PathPrefix(`/outpost.goauthentik.io/`)
+      services:
+        - kind: Service
+          name: authentik-server
+          namespace: authentik
+          port: 80

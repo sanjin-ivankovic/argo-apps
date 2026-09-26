@@ -1,0 +1,281 @@
+---
+# ============================================================================
+# LiteLLM Configuration
+# Helm Chart: litellm 1.0.0 (homelab custom chart)
+# Purpose: LLM proxy / gateway — fronts Azure AI Foundry models behind one
+#          OpenAI-compatible API; backed by the shared PostgreSQL cluster.
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Tuned for homelab traffic (100-500 req/day). Memory: 2 uvicorn workers +
+# Prisma client + Python imports exceed 2Gi at startup. 4Gi limit gives
+# comfortable headroom; bump if OOMKilled recurs.
+resources:
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+  limits:
+    cpu: "2000m"
+    memory: "4Gi"
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# ============================================================================
+# Valkey Coordination
+# ============================================================================
+
+# Shared-Valkey connection (REDIS_HOST/PORT/DB/PASSWORD) for the
+# router_settings block below. Held in its own secret, separate from
+# litellm-secrets, so re-sealing it can never rotate the immutable
+# LITELLM_SALT_KEY.
+extraEnvFrom:
+  - secretRef:
+      name: litellm-valkey
+
+# ============================================================================
+# Proxy Configuration (rendered into the ConfigMap)
+# ============================================================================
+
+# LiteLLM proxy configuration rendered verbatim into the ConfigMap mounted
+# at /app/proxy_server_config.yaml.
+#
+# The primary tier spans TWO Azure AI Foundry projects under the
+# `proj-projalpha` foundry. Each logical model is deployed in exactly one of the
+# two projects, so models are declared once and routed to their home
+# project — there are no duplicate declarations here.
+#
+#   proj-projalpha-prod (projalpha-prod.services.ai.azure.com):
+#     claude-opus-4-6, deepseek-v4-pro, gpt-5.3-codex, gpt-5.4,
+#     gpt-5.4-mini, gpt-5.4-pro
+#   proj-projalpha-dev  (projalpha-dev-resource.services.ai.azure.com):
+#     claude-sonnet-4-6, claude-opus-4-7
+#
+# Routing per project:
+#   - Anthropic/Claude models  -> azure_ai/ prefix, api_base .../anthropic
+#     (LiteLLM appends /v1/messages; confirmed against the Foundry
+#      "Target URI" .../anthropic/v1/messages).
+#   - OpenAI-compatible models (GPT family, DeepSeek) -> openai/ prefix,
+#     api_base .../api/projects/<project>/openai/v1. `model:` matches the
+#     Foundry deployment name verbatim (case-sensitive).
+#
+# Backup tier + automatic fallbacks are intentionally omitted in this pass;
+# they will be reinstated against the backup Foundry project once the
+# primary config is verified live.
+proxy_config:
+  model_list:
+    # --- Primary: proj-projalpha-prod (projalpha-prod.services.ai.azure.com) ---
+    - model_name: claude-fable-5
+      litellm_params:
+        model: azure_ai/claude-fable-5
+        api_base: https://projalpha-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: claude-opus-4-6
+      litellm_params:
+        model: azure_ai/claude-opus-4-6
+        api_base: https://projalpha-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: claude-opus-4-7
+      litellm_params:
+        model: azure_ai/claude-opus-4-7
+        api_base: https://projalpha-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: claude-opus-4-8
+      litellm_params:
+        model: azure_ai/claude-opus-4-8
+        api_base: https://projalpha-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: claude-opus-5
+      litellm_params:
+        model: azure_ai/claude-opus-5
+        api_base: https://projalpha-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: claude-sonnet-4-6
+      litellm_params:
+        model: azure_ai/claude-sonnet-4-6
+        api_base: https://projalpha-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: claude-sonnet-5
+      litellm_params:
+        model: azure_ai/claude-sonnet-5
+        api_base: https://projalpha-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    # DeepSeek is a Foundry serverless (azure_ai/) deployment — its
+    # Target URI is the bare resource root (no /anthropic, no
+    # /openai/v1 path), unlike the GPT models below. `model:` is the
+    # exact deployment name (case-sensitive).
+    - model_name: deepseek-v4-pro
+      litellm_params:
+        model: azure_ai/DeepSeek-V4-Pro
+        api_base: https://projalpha-prod.services.ai.azure.com
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: gpt-5.3-codex
+      litellm_params:
+        model: openai/gpt-5.3-codex
+        api_base: https://projalpha-prod.services.ai.azure.com/api/projects/proj-projalpha-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: gpt-5.4
+      litellm_params:
+        model: openai/gpt-5.4
+        api_base: https://projalpha-prod.services.ai.azure.com/api/projects/proj-projalpha-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: gpt-5.4-mini
+      litellm_params:
+        model: openai/gpt-5.4-mini
+        api_base: https://projalpha-prod.services.ai.azure.com/api/projects/proj-projalpha-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: gpt-5.4-pro
+      litellm_params:
+        model: openai/gpt-5.4-pro
+        api_base: https://projalpha-prod.services.ai.azure.com/api/projects/proj-projalpha-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: gpt-5.6-sol
+      litellm_params:
+        model: gpt-5.6-sol
+        api_base: https://projalpha-prod.services.ai.azure.com/api/projects/proj-projalpha-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: gpt-5.6-terra
+      litellm_params:
+        model: gpt-5.6-terra
+        api_base: https://projalpha-prod.services.ai.azure.com/api/projects/proj-projalpha-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+    - model_name: gpt-5.6-luna
+      litellm_params:
+        model: gpt-5.6-luna
+        api_base: https://projalpha-prod.services.ai.azure.com/api/projects/proj-projalpha-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_PROD
+
+    # --- Primary: proj-projalpha-dev (projalpha-dev-resource.services.ai.azure.com) ---
+    # - model_name: claude-sonnet-4-6
+    #   litellm_params:
+    #     model: azure_ai/claude-sonnet-4-6
+    #     api_base: https://projalpha-dev-resource.services.ai.azure.com/anthropic
+    #     api_key: os.environ/AZURE_FOUNDRY_KEY_DEV
+    # - model_name: claude-opus-4-7
+    #   litellm_params:
+    #     model: azure_ai/claude-opus-4-7
+    #     api_base: https://projalpha-dev-resource.services.ai.azure.com/anthropic
+    #     api_key: os.environ/AZURE_FOUNDRY_KEY_DEV
+
+    # --- Backup: proj-projbeta-prod (projbeta-foundry-prod.services.ai.azure.com) ---
+    # Failover targets wired via litellm_settings.fallbacks below. Clients
+    # only ever call the primary name; LiteLLM retries the *-backup variant
+    # when the primary project errors. All 8 primary models are deployed in
+    # both tiers, so each has a -backup variant and a fallback entry.
+    - model_name: claude-opus-4-6-backup
+      litellm_params:
+        model: azure_ai/claude-opus-4-6
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: claude-opus-4-7-backup
+      litellm_params:
+        model: azure_ai/claude-opus-4-7
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: claude-opus-4-8-backup
+      litellm_params:
+        model: azure_ai/claude-opus-4-8
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: claude-opus-5-backup
+      litellm_params:
+        model: azure_ai/claude-opus-5
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: claude-sonnet-4-6-backup
+      litellm_params:
+        model: azure_ai/claude-sonnet-4-6
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/anthropic
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    # DeepSeek serverless deployment — bare resource root, same as prod.
+    - model_name: deepseek-v4-pro-backup
+      litellm_params:
+        model: azure_ai/DeepSeek-V4-Pro
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: gpt-5.3-codex-backup
+      litellm_params:
+        model: openai/gpt-5.3-codex
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/api/projects/proj-projbeta-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: gpt-5.4-backup
+      litellm_params:
+        model: openai/gpt-5.4
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/api/projects/proj-projbeta-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: gpt-5.4-mini-backup
+      litellm_params:
+        model: openai/gpt-5.4-mini
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/api/projects/proj-projbeta-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: gpt-5.4-pro-backup
+      litellm_params:
+        model: openai/gpt-5.4-pro
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/api/projects/proj-projbeta-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: gpt-5.6-sol-backup
+      litellm_params:
+        model: gpt-5.6-sol
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/api/projects/proj-projbeta-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: gpt-5.6-terra-backup
+      litellm_params:
+        model: gpt-5.6-terra
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/api/projects/proj-projbeta-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+    - model_name: gpt-5.6-luna-backup
+      litellm_params:
+        model: gpt-5.6-luna
+        api_base: https://projbeta-foundry-prod.services.ai.azure.com/api/projects/proj-projbeta-prod/openai/v1
+        api_key: os.environ/AZURE_FOUNDRY_KEY_BACKUP
+
+  general_settings:
+    master_key: os.environ/LITELLM_MASTER_KEY
+    database_url: os.environ/DATABASE_URL
+    database_connection_pool_limit: 10
+
+  # The proxy runs 2 uvicorn workers (--num_workers in args). Without a
+  # shared store each worker keeps its own rate-limit counters and budget
+  # spend, so virtual-key budgets overshoot by up to 2x and TPM/RPM limits
+  # are enforced once per worker.
+  #
+  # There is deliberately no redis_db key here — LiteLLM has none. The
+  # logical DB index comes from the REDIS_DB env var (litellm-valkey
+  # secret), which _redis.py maps onto the redis-py `db` kwarg.
+  router_settings:
+    routing_strategy: simple-shuffle
+    redis_host: os.environ/REDIS_HOST
+    redis_port: os.environ/REDIS_PORT
+    redis_password: os.environ/REDIS_PASSWORD
+
+  litellm_settings:
+    callbacks: ["prometheus"]
+    json_logs: true
+    set_verbose: false
+    drop_params: true
+    # Primary (proj-projalpha-prod/dev) -> backup (proj-projbeta-prod) failover.
+    fallbacks:
+      - claude-opus-4-6: ["claude-opus-4-6-backup"]
+      - claude-opus-4-7: ["claude-opus-4-7-backup"]
+      - claude-opus-4-8: ["claude-opus-4-8-backup"]
+      - claude-opus-5: ["claude-opus-5-backup"]
+      - claude-sonnet-4-6: ["claude-sonnet-4-6-backup"]
+      - deepseek-v4-pro: ["deepseek-v4-pro-backup"]
+      - gpt-5.3-codex: ["gpt-5.3-codex-backup"]
+      - gpt-5.4: ["gpt-5.4-backup"]
+      - gpt-5.4-mini: ["gpt-5.4-mini-backup"]
+      - gpt-5.4-pro: ["gpt-5.4-pro-backup"]
+      - gpt-5.6-sol: ["gpt-5.6-sol-backup"]
+      - gpt-5.6-terra: ["gpt-5.6-terra-backup"]
+      - gpt-5.6-luna: ["gpt-5.6-luna-backup"]
