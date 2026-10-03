@@ -1,0 +1,7 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+# The deployed ArgoCD component — self-manages the controller (ServerSideApply).
+namespace: argocd
+syncWave: "0"
+createNamespace: false
+serverSideApply: true

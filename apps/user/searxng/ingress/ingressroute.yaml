@@ -1,0 +1,19 @@
+---
+# SearXNG metasearch — no built-in login and no Traefik ForwardAuth gate.
+# Reachable on the LAN only (not exposed via the Cloudflare tunnel); gate it
+# behind the authentik-forwardauth middleware if it is ever put on the tunnel.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: searxng-ingressroute
+  namespace: searxng
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`search.example.com`)
+      services:
+        - kind: Service
+          name: searxng
+          port: 8080

@@ -1,0 +1,40 @@
+---
+# LibreTranslate at translate.example.com (external service on its own LXC).
+#
+# LibreTranslate has no authentication of its own, so the Authentik
+# ForwardAuth middleware is the single gate — treat the middleware reference
+# as load-bearing. Paired with the translate proxy provider in
+# apps/infra/authentik/blueprints/10-proxy-providers.yaml; a host with no
+# provider is a 404 from the outpost, so the pair must move together.
+#
+# This gates the web UI *and* the /translate API. API clients cannot complete
+# an interactive SSO redirect, so anything programmatic (e.g. Lingarr subtitle
+# translation) must talk to the LibreTranslate backend directly instead of
+# going through this host.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: libretranslate-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`translate.example.com`)
+      middlewares:
+        - name: authentik-forwardauth
+          namespace: authentik
+      services:
+        - kind: Service
+          name: libretranslate
+          port: 5000
+    # The outpost's own endpoints (login redirect target, callback). Longer
+    # rule wins Traefik's default priority; carries no auth middleware.
+    - kind: Rule
+      match: Host(`translate.example.com`) && PathPrefix(`/outpost.goauthentik.io/`)
+      services:
+        - kind: Service
+          name: authentik-server
+          namespace: authentik
+          port: 80

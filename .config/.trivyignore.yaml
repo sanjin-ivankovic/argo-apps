@@ -1,0 +1,49 @@
+---
+# Trivy misconfig ignore rules for argo-apps (the ArgoCD GitOps repo). This is
+# the YAML ignorefile format — trivy ONLY parses it as YAML when the filename
+# ends in .yaml/.yml (a plain `.trivyignore` is read as a flat ID list), so keep
+# the .yaml suffix. Passed to scan:trivy-config via --ignorefile.
+#
+# scan:trivy-config runs `trivy config` over the RAW apps/** tree (NOT kustomize/
+# helm-rendered). Each entry is path-scoped so the check stays enforced
+# everywhere else. AVD ID form; paths use doublestar globs against the scanned
+# file path.
+
+misconfigurations:
+  # The argocd-repo-server and sealed-secrets-controller patches are PARTIAL
+  # kustomize strategic-merge fragments — they carry only a container name +
+  # volumes/affinity so kustomize can merge them onto the upstream Deployment.
+  # trivy scans the fragment, which by construction has no securityContext, so
+  # it flags KSV-0118/KSV-0014. The LIVE merged pod inherits the upstream's
+  # securityContext: argo-cd v3.4.3 and sealed-secrets v0.37.0 both render with
+  # allowPrivilegeEscalation:false, drop:[ALL], readOnlyRootFilesystem:true
+  # (verified via `kustomize build`). Adding readOnlyRootFilesystem to a
+  # long-running controller fragment would be redundant and risks breakage, so
+  # the patches are left as-is and the fragment finding is accepted.
+  - id: AVD-KSV-0118
+    paths:
+      - "**/argocd-repo-server-dockerconfig-patch.yaml"
+      - "**/sealed-secrets/patches/controller-patch.yaml"
+    statement: "Partial strategic-merge patch; merged pod inherits the upstream's hardened securityContext (argo-cd v3.4.3 / sealed-secrets v0.37.0)."
+  - id: AVD-KSV-0014
+    paths:
+      - "**/argocd-repo-server-dockerconfig-patch.yaml"
+      - "**/sealed-secrets/patches/controller-patch.yaml"
+    statement: "readOnlyRootFilesystem is set by the upstream Deployment, not the fragment; not added to the fragment to avoid breaking the long-running controller."
+
+  # The longhorn-post-upgrade Job runs the longhorn-manager image, which is
+  # designed to run as ROOT (longhorn's driver-deployer sets runAsUser:0 and the
+  # manager DaemonSet/pre-upgrade Job run privileged:true — verified via
+  # `kustomize build`). Forcing runAsNonRoot/readOnlyRootFilesystem on this
+  # one-shot post-upgrade Job would fail admission, so the patch only adds node
+  # affinity and the default-security-context finding on the fragment is accepted.
+  # (cert-manager's startupapicheck IS hardened in-fragment — its upstream image
+  # already runs non-root.)
+  - id: AVD-KSV-0118
+    paths:
+      - "**/longhorn/patches/post-upgrade-job-patch.yaml"
+    statement: "longhorn-manager image runs as root by design (privileged storage management); the one-shot post-upgrade Job cannot run non-root."
+  - id: AVD-KSV-0014
+    paths:
+      - "**/longhorn/patches/post-upgrade-job-patch.yaml"
+    statement: "longhorn-manager image runs as root by design; readOnlyRootFilesystem not applicable to this one-shot Job."

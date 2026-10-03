@@ -1,0 +1,70 @@
+---
+# ============================================================================
+# cert-manager Configuration
+# Helm Chart: cert-manager v1.20.2 (Jetstack)
+# Purpose: Issues + renews TLS certificates (Let's Encrypt via Cloudflare
+#          DNS01), including the *.example.com wildcard used across ingress.
+# ============================================================================
+
+# ============================================================================
+# CRDs & DNS01 Resolution
+# ============================================================================
+
+crds:
+  enabled: true
+
+# Resolve the DNS01 challenge against public resolvers — the in-cluster
+# resolver can't see the public _acme-challenge TXT records. Format is ip:port.
+dns01RecursiveNameservers: "1.1.1.1:53,1.0.0.1:53"
+dns01RecursiveNameserversOnly: true
+
+# ============================================================================
+# Global Configuration
+# ============================================================================
+
+global:
+  priorityClassName: critical-infrastructure
+
+# ============================================================================
+# Controller / Webhook / CA Injector Placement
+# ============================================================================
+
+# Controller: schedule on worker nodes.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# Webhook: worker nodes, with pod anti-affinity to spread replicas across hosts.
+webhook:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - webhook
+            topologyKey: kubernetes.io/hostname
+
+# CA injector: schedule on worker nodes.
+cainjector:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists

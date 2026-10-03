@@ -1,0 +1,61 @@
+---
+# ============================================================================
+# PostgreSQL Configuration
+# Helm Chart: postgresql (homelab custom, official docker.io/library/postgres
+# image — see helm-charts charts/postgresql)
+# Purpose: Shared PostgreSQL — per-app databases for harbor, docuseal,
+#          litellm, joplin, memos, snapotter, and authentik (created by
+#          jobs/, applied manually).
+# ============================================================================
+
+# Service must stay exactly `postgresql` — every consumer DSN, the DB-create
+# jobs, and the MetalLB address point at
+# postgresql.postgresql.svc.cluster.local.
+fullnameOverride: postgresql
+
+priorityClassName: high-priority-stateful
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+existingSecret: postgresql-secret
+secretKeys:
+  adminPassword: postgres-password
+
+postgresql:
+  # First-boot only. Matches the previous cluster exactly (verified via
+  # pg_database before the migration): UTF8, en_US.UTF-8 libc collation.
+  # A different locale here would silently change text sort order.
+  initdbArgs: "--encoding=UTF8 --locale=en_US.UTF-8"
+
+persistence:
+  storageClass: longhorn
+  size: 16Gi
+
+# LoadBalancer exposes Postgres for external clients (e.g. DataGrip) on a
+# static MetalLB pool IP.
+service:
+  type: LoadBalancer
+  loadBalancerIP: "10.10.0.68"
+
+# Nightly pg_dumpall to its own PVC — the only database backup in the
+# cluster; restore procedure in docs/BACKUP-DR.md.
+backup:
+  enabled: true
+  persistence:
+    storageClass: longhorn
+    size: 20Gi
