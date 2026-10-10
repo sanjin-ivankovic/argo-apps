@@ -1,0 +1,6 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+namespace: traefik
+syncWave: "2"
+createNamespace: true
+serverSideApply: true

@@ -1,0 +1,94 @@
+---
+# ============================================================================
+# PriceBuddy Configuration
+# Helm Chart: pricebuddy 1.0.0 (homelab custom chart)
+# Purpose: Price tracker; uses the shared PostgreSQL cluster and an in-chart
+#          SeleniumBase browser scraper.
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Apache + scheduler + queue worker in one container; PHP memory_limit=2048M.
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "2000m"
+    memory: "2Gi"
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# ============================================================================
+# Persistence
+# ============================================================================
+
+# Laravel storage (logs, framework cache, public uploads) at /app/storage.
+persistence:
+  enabled: true
+  size: 5Gi
+
+# ============================================================================
+# Secrets & Environment
+# ============================================================================
+
+# APP_KEY, DB_PASSWORD, APP_USER_EMAIL, APP_USER_PASSWORD (envFrom).
+existingSecret: "pricebuddy-secret"
+
+# Traefik terminates TLS and forwards plain HTTP with X-Forwarded-Proto;
+# TRUSTED_PROXIES defaults to "*" in the chart, so Laravel builds https:// URLs
+# from APP_URL and the forwarded scheme.
+env:
+  APP_ENV: production
+  APP_URL: https://pricebuddy.example.com
+  ASSET_URL: https://pricebuddy.example.com
+  APP_TIMEZONE: Europe/Berlin
+  SESSION_SECURE_COOKIE: "true"
+  DB_CONNECTION: pgsql
+  DB_HOST: postgresql.postgresql.svc.cluster.local
+  DB_PORT: "5432"
+  DB_DATABASE: pricebuddy
+  DB_USERNAME: pricebuddy
+  TRUSTED_PROXIES: "*"
+  CACHE_STORE: database
+  QUEUE_CONNECTION: database
+  SESSION_DRIVER: database
+  AFFILIATE_ENABLED: "false"
+  APP_USER_NAME: Admin
+
+# ============================================================================
+# Browser Scraper
+# ============================================================================
+
+# Headless Chrome for stores whose prices render client-side ("Fetched with:
+# Browser"). ClusterIP only; the chart wires SCRAPER_BASE_URL to it.
+scraper:
+  enabled: true
+  priorityClassName: normal-priority
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "3Gi"
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists
+  env:
+    DEFAULT_TIMEOUT: "60000"
+    DEFAULT_INCOGNITO: "true"

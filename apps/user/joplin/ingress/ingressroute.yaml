@@ -1,0 +1,17 @@
+---
+# Joplin Server handles authentication itself (built-in account login). LAN-only
+# — not exposed via the Cloudflare tunnel — and no Traefik ForwardAuth gate here.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: joplin-ingressroute
+  namespace: joplin
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`joplin.example.com`)
+      kind: Rule
+      services:
+        - name: joplin
+          port: 80

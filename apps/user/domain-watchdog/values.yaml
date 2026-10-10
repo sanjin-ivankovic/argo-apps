@@ -1,0 +1,79 @@
+---
+# ============================================================================
+# Domain Watchdog Configuration
+# Helm Chart: domain-watchdog 1.0.0 (homelab custom chart)
+# Purpose: RDAP domain monitor; uses the shared PostgreSQL cluster and Valkey
+#          DB 5 (Messenger queues + locks), logs in via Authentik OIDC.
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "256Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# ============================================================================
+# Secrets & Environment
+# ============================================================================
+
+# APP_SECRET, DATABASE_URL, LOCK_DSN, MESSENGER_*_TRANSPORT_DSN and
+# OAUTH_CLIENT_SECRET (envFrom).
+existingSecret: "domain-watchdog-secret"
+
+# Persistent RSA keypair for the login JWTs; without it every restart logs
+# everyone out.
+jwt:
+  existingSecret: "domain-watchdog-jwt"
+
+# Chart defaults cover APP_ENV, SERVER_NAME, the trusted-proxy settings and
+# HTTP_SECURE_COOKIE. No SMTP relay exists in the cluster: mail stays on
+# null://null and alerts go through per-watchlist notifier channels.
+#
+# Authentik is the only login path (registration off, auto-redirect to SSO).
+# There is deliberately no forward-auth middleware on the IngressRoute, so
+# watchlist calendar/RSS feed URLs and API tokens keep working for clients
+# outside a browser session.
+env:
+  MAILER_SENDER_EMAIL: notifications@example.com
+  REGISTRATION_ENABLED: "false"
+  REGISTRATION_VERIFY_EMAIL: "false"
+  SSO_AUTO_REDIRECT: "true"
+  PUBLIC_RDAP_LOOKUP_ENABLED: "false"
+  OAUTH_CLIENT_ID: domain-watchdog
+  OAUTH_AUTHORIZATION_URL: https://auth.example.com/application/o/authorize/
+  OAUTH_TOKEN_URL: https://auth.example.com/application/o/token/
+  OAUTH_USERINFO_URL: https://auth.example.com/application/o/userinfo/
+  # Space-separated: the app splits on commas and re-joins with commas, so a
+  # comma list reaches Authentik as one unknown scope, the token lacks
+  # `openid` and userinfo answers 403 (login fails with a 500).
+  OAUTH_SCOPE: "openid email profile"
+
+# ============================================================================
+# Worker (Messenger consumer + in-process scheduler)
+# ============================================================================
+
+worker:
+  priorityClassName: normal-priority
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists

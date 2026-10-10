@@ -1,0 +1,73 @@
+---
+# Generates one Argo CD Application per apps/<tier>/<name>/config.yaml.
+# A dir without a config.yaml produces no Application (so it neither syncs
+# nor gets pruned) — the config.yaml is the opt-in.
+#
+# Structure note: root pulls this file via kustomize, and `kustomize build`
+# parses it as strict YAML before the ApplicationSet controller renders any
+# template. So the `template:` below is kept as valid YAML (inline value
+# substitutions only); all conditional/structural logic lives in the
+# `templatePatch:` string, which kustomize passes through untouched.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: ssh://git@source.example.com/example-org/argo-apps.git
+        revision: main
+        files:
+          - path: apps/*/*/config.yaml
+  template:
+    metadata:
+      name: "{{ .path.basename }}"
+      labels:
+        app.kubernetes.io/part-of: homelab
+        app.kubernetes.io/managed-by: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: "{{ dig \"syncWave\" \"0\" . }}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: ssh://git@source.example.com/example-org/argo-apps.git
+        targetRevision: main
+        path: "{{ .path.path }}"
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        syncOptions:
+          - ApplyOutOfSyncOnly=true
+  # Per-app overrides from config.yaml. missingkey=error means optional keys
+  # must be read with dig (value-or-default), never referenced bare.
+  templatePatch: |
+    spec:
+      {{- if dig "namespace" "" . }}
+      destination:
+        namespace: {{ .namespace }}
+      {{- end }}
+      {{- if dig "ignoreDifferences" false . }}
+      ignoreDifferences:
+        {{- toYaml .ignoreDifferences | nindent 8 }}
+      {{- end }}
+      syncPolicy:
+        {{- if dig "autoSync" false . }}
+        automated:
+          prune: true
+          selfHeal: true
+        {{- end }}
+        syncOptions:
+          - ApplyOutOfSyncOnly=true
+          {{- if dig "createNamespace" false . }}
+          - CreateNamespace=true
+          {{- end }}
+          {{- if dig "serverSideApply" false . }}
+          - ServerSideApply=true
+          {{- end }}
