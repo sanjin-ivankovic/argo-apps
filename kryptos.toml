@@ -1,0 +1,37 @@
+# kryptos layout for the homelab argo-apps repo.
+#
+# The kryptos engine lives in its own repo now (source.example.com/example-org/kryptos);
+# only the homelab secret CONFIGS stay here. Run a released kryptos binary from
+# this repo root and it reads this file to find the configs + write sealed
+# secrets into the cluster tree.
+#
+#   # one-time: grab the pinned release binary (example-org/kryptos is PRIVATE,
+#   # so the download needs a GitLab token with read_api scope on it).
+#   VER=v0.1.0; GITLAB_TOKEN=<your-read-PAT>
+#   curl -fsSL -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" -o /tmp/kryptos.tgz \
+#     "https://source.example.com/api/v4/projects/homelab%2Fkryptos/releases/${VER}/downloads/kryptos_${VER#v}_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/').tar.gz"
+#   tar xzf /tmp/kryptos.tgz -C /usr/local/bin kryptos
+#
+#   # then, from the argo-apps repo root:
+#   kryptos                       # interactive TUI
+#   kryptos validate              # check every config (no cluster needed)
+#   kryptos seal <app> <secret>   # non-interactive
+#
+# Every value below matches the tool's built-in default, so the engine works
+# even without this file — it's kept explicit to make the argo-apps↔kryptos
+# contract clear and stable against any future change to the tool's defaults.
+
+# Where the app secret configs live (relative to this repo root).
+config_dir = "kryptos/configs"
+
+# Sealed-secret output path template. {section} is resolved against `sections`
+# (first existing app dir wins); {app} = config metadata.name; {name} =
+# <secret name minus trailing -secret>-sealed-secret.yaml.
+# Apps now live under apps/<tier>/<app>/, so {section} is the tier.
+output_layout = "apps/{section}/{app}/secrets/{name}"
+
+# Tier dirs tried in order when locating an app's output directory.
+sections = ["infra", "data", "services", "user"]
+
+# Default sealed-secrets controller namespace.
+controller_namespace = "kube-system"

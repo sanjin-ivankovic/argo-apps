@@ -1,0 +1,17 @@
+---
+# Hermes agent web dashboard runs on the hermes LXC (10.10.0.17) outside the
+# cluster. Headless Service + EndpointSlice proxy it through Traefik at
+# hermes.example.com. The dashboard authenticates callers itself via its own
+# basic_auth; see the IngressRoute.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes
+  namespace: traefik
+spec:
+  clusterIP: None
+  ports:
+    - port: 9119
+      targetPort: 9119
+      name: http
+      protocol: TCP

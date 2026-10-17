@@ -1,0 +1,47 @@
+---
+# ============================================================================
+# Metrics Server Configuration
+# Helm Chart: metrics-server 3.13.0 (kubernetes-sigs)
+# Purpose: Cluster-wide resource metrics (CPU/memory) for `kubectl top` and
+#          HorizontalPodAutoscaler.
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Scheduling
+# ============================================================================
+
+priorityClassName: critical-infrastructure
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# ============================================================================
+# Resource Management
+# ============================================================================
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# ============================================================================
+# Kubelet Scraping Arguments
+# ============================================================================
+
+# Talos kubelet serving certs lack IP SANs, so --kubelet-insecure-tls is
+# required for the kubelet scrape; resolution is 15s.
+defaultArgs:
+  - --cert-dir=/tmp
+  - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+  - --kubelet-use-node-status-port
+  - --kubelet-insecure-tls
+  - --metric-resolution=15s

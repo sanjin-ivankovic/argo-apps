@@ -1,0 +1,17 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: zerobyte-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`zerobyte.example.com`)
+      services:
+        - kind: Service
+          name: zerobyte
+          port: 4096
+          scheme: http

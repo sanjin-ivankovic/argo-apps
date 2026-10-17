@@ -1,0 +1,62 @@
+---
+# ============================================================================
+# SnapOtter Configuration
+# Helm Chart: snapotter 1.0.0 (homelab custom chart)
+# Purpose: Self-hosted file processing platform (images, video, audio, PDF).
+# ============================================================================
+# Override default values for SnapOtter chart
+
+# ============================================================================
+# Workload (scheduling, resources, storage)
+# ============================================================================
+
+# Priority class for normal workloads
+priorityClassName: normal-priority
+
+# Node placement - schedule on any worker node
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# CPU-AI profile: all tools including CPU-based AI (background removal,
+# upscaling); the AI models and Python venv live on the /data volume.
+resources:
+  requests:
+    memory: "2Gi"
+    cpu: "1000m"
+  limits:
+    memory: "4Gi"
+    cpu: "4000m"
+
+# AI models + Python venv + user file library. Longhorn (cluster default
+# storage class) — do not set storageClass.
+persistence:
+  size: 30Gi
+
+# ============================================================================
+# Application (environment + authentication)
+# ============================================================================
+
+# DATABASE_URL (shared PostgreSQL), REDIS_URL (shared Valkey DB 2) and
+# OIDC_CLIENT_SECRET come from this sealed secret.
+existingSecret: "snapotter-secret"
+
+# Native OIDC against Authentik — no forward-auth middleware on the
+# IngressRoute; SnapOtter enforces authentication itself (AUTH_ENABLED
+# defaults to true). Callback: EXTERNAL_URL + /api/auth/oidc/callback.
+# Authentik issuers are per application, hence the /application/o/<slug>/
+# path; the client is defined in
+# apps/infra/authentik/blueprints/20-oauth2-providers.yaml.
+env:
+  EXTERNAL_URL: "https://snapotter.example.com"
+  SNAPOTTER_TELEMETRY: "off"
+  OIDC_ENABLED: "true"
+  OIDC_ISSUER_URL: "https://auth.example.com/application/o/snapotter/"
+  OIDC_CLIENT_ID: "snapotter"
+  OIDC_PROVIDER_NAME: "Authentik"
+  OIDC_AUTO_CREATE_USERS: "true"
+  OIDC_DEFAULT_ROLE: "user"

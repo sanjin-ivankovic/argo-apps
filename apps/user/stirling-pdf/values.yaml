@@ -1,0 +1,42 @@
+---
+# ============================================================================
+# Stirling-PDF Configuration
+# Helm Chart: stirling-pdf 1.0.8 (homelab custom chart)
+# Purpose: Self-hosted PDF toolset.
+# ============================================================================
+# Override default values for Stirling PDF chart
+
+# ============================================================================
+# Workload (security context, scheduling, resources)
+# ============================================================================
+
+# Priority class for normal workloads
+priorityClassName: normal-priority
+
+# Node placement - schedule on any worker node
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# Increase memory limit and tune JVM to prevent OOM: Metaspace exhaustion
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "100m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
+
+# ============================================================================
+# Application (environment + authentication)
+# ============================================================================
+
+# Cap JVM Metaspace and enable container-aware memory limits
+env:
+  DOCKER_ENABLE_SECURITY: "true"
+  SECURITY_ENABLELOGIN: "true"
+  SYSTEM_DEFAULTLOCALE: "en-US"

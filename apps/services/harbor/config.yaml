@@ -1,0 +1,29 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+# Wave 5 — depends on postgresql + valkey (data tier, wave 4), cert-manager,
+# traefik. ignoreDifferences masks the chart's per-render internal-TLS cert and
+# the checksum annotations that hash it (see the prior harbor.yaml rationale).
+namespace: harbor
+syncWave: "5"
+createNamespace: true
+ignoreDifferences:
+  - kind: Secret
+    name: harbor-core
+    jsonPointers:
+      - /data/tls.crt
+      - /data/tls.key
+  - group: apps
+    kind: Deployment
+    name: harbor-core
+    jsonPointers:
+      - /spec/template/metadata/annotations/checksum~1secret
+  - group: apps
+    kind: Deployment
+    name: harbor-jobservice
+    jsonPointers:
+      - /spec/template/metadata/annotations/checksum~1secret-core
+  - group: apps
+    kind: Deployment
+    name: harbor-registry
+    jsonPointers:
+      - /spec/template/metadata/annotations/checksum~1secret-core
