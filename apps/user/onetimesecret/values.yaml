@@ -1,0 +1,68 @@
+---
+# ============================================================================
+# One Time Secret Configuration
+# Helm Chart: onetimesecret 1.0.0 (homelab custom chart)
+# Purpose: Expiring, view-once secret links; all state in the shared Valkey.
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# ============================================================================
+# Application Configuration
+# ============================================================================
+
+config:
+  # Public hostname (no scheme) + https link generation. TLS terminates at
+  # Traefik; SSL only controls the scheme of generated links.
+  host: secret.example.com
+  ssl: true
+  rackEnv: production
+  siteName: "One Time Secret"
+  # Admin account email.
+  colonel: maintainer@example.com
+  auth:
+    enabled: true
+    signin: true
+    # Sign-in is required to create secrets; viewing a received link is
+    # always anonymous.
+    required: true
+    # Registration is closed; the admin account is the only account.
+    # If signup is ever reopened, autoverify must come with it — there is
+    # no SMTP, so email verification can never complete.
+    signup: false
+    autoverify: false
+
+# AUTH_REQUIRED only gates the web UI; the guest API routes (which the
+# homepage form also calls) accept anonymous requests regardless. Disable
+# guest create/generate so sign-in is genuinely required to create secrets;
+# reveal/burn/show/receipt stay enabled so recipients never need an account.
+extraEnv:
+  API_GUEST_CONCEAL: "false"
+  API_GUEST_GENERATE: "false"
+
+# ============================================================================
+# Secret (SECRET encryption key + REDIS_URL with Valkey password)
+# ============================================================================
+
+existingSecret: "onetimesecret-secret"

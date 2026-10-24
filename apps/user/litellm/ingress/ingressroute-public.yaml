@@ -1,0 +1,30 @@
+---
+# Public (Cloudflare-tunnel) route for LiteLLM's OpenAI-compatible API. Exists so
+# external OpenAI clients that relay through their own cloud — e.g. Warp, which
+# cannot reach the LAN-only litellm.example.com host — can call the proxy.
+#
+# Scoped to /v1 ONLY: the admin UI (/ui), key-management (/key/*), and
+# model-management (/model/*) paths are intentionally NOT exposed here and stay
+# reachable only on the LAN-only litellm.example.com IngressRoute. A request to
+# litellm-ext.example.com outside /v1 matches no route and Traefik returns 404.
+#
+# Auth boundary is a SCOPED LiteLLM virtual key (max_budget + rpm_limit), NOT the
+# master key. IP-allowlists / Cloudflare Access cannot gate this: Warp relays
+# from rotating cloud IPs and forwards only the bearer token. See docs/SECURITY.md.
+#
+# No tls: block — the wildcard *.example.com cert covers this host automatically.
+# No middleware — ForwardAuth/SSO would break programmatic bearer-key access.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: litellm-public-ingressroute
+  namespace: litellm
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`litellm-ext.example.com`) && PathPrefix(`/v1`)
+      kind: Rule
+      services:
+        - name: litellm
+          port: 4000

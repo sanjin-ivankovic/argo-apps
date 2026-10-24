@@ -1,0 +1,26 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: pricebuddy-ingressroute
+  namespace: pricebuddy
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`pricebuddy.example.com`)
+      middlewares:
+        - name: authentik-forwardauth
+          namespace: authentik
+      kind: Rule
+      services:
+        - name: pricebuddy
+          port: 80
+    # The outpost's own endpoints (login redirect target, callback). Longer
+    # rule wins Traefik's default priority; carries no auth middleware.
+    - match: Host(`pricebuddy.example.com`) && PathPrefix(`/outpost.goauthentik.io/`)
+      kind: Rule
+      services:
+        - name: authentik-server
+          namespace: authentik
+          port: 80

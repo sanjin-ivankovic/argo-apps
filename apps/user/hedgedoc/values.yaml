@@ -1,0 +1,92 @@
+---
+# ============================================================================
+# HedgeDoc Configuration
+# Helm Chart: hedgedoc 1.0.0 (homelab custom chart)
+# Purpose: Real-time collaborative Markdown editor; uses the shared
+#          PostgreSQL cluster and logs in through Authentik OIDC.
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# ============================================================================
+# Persistence
+# ============================================================================
+
+# Uploaded images (CMD_IMAGE_UPLOAD_TYPE=filesystem). Note content lives in
+# PostgreSQL. Longhorn (cluster default storage class) — do not set
+# storageClass.
+persistence:
+  enabled: true
+  size: 5Gi
+
+# ============================================================================
+# Secrets & Environment
+# ============================================================================
+
+# CMD_DB_PASSWORD (shared PostgreSQL), CMD_SESSION_SECRET and
+# CMD_OAUTH2_CLIENT_SECRET come from this sealed secret.
+existingSecret: "hedgedoc-secret"
+
+# Native OIDC against Authentik — no forward-auth middleware on the
+# IngressRoute; HedgeDoc enforces authentication itself (anonymous access and
+# local email accounts are off, so Authentik is the only way in). HedgeDoc's
+# OAuth2 client has no discovery, hence the explicit Authentik endpoints.
+# Callback: https://hedgedoc.example.com/auth/oauth2/callback, registered in
+# apps/infra/authentik/blueprints/20-oauth2-providers.yaml.
+env:
+  CMD_PORT: "3000"
+  CMD_DOMAIN: "hedgedoc.example.com"
+  CMD_PROTOCOL_USESSL: "true"
+  CMD_URL_ADDPORT: "false"
+  CMD_DB_DIALECT: "postgres"
+  CMD_DB_HOST: "postgresql.postgresql.svc.cluster.local"
+  CMD_DB_PORT: "5432"
+  CMD_DB_DATABASE: "hedgedoc"
+  CMD_DB_USERNAME: "hedgedoc"
+  CMD_IMAGE_UPLOAD_TYPE: "filesystem"
+  CMD_EMAIL: "false"
+  CMD_ALLOW_EMAIL_REGISTER: "false"
+  CMD_ALLOW_ANONYMOUS: "false"
+  CMD_ALLOW_ANONYMOUS_EDITS: "false"
+  CMD_ENABLE_UPLOADS: "registered"
+  CMD_OAUTH2_PROVIDERNAME: "Authentik"
+  CMD_OAUTH2_CLIENT_ID: "hedgedoc"
+  CMD_OAUTH2_SCOPE: "openid email profile groups"
+  CMD_OAUTH2_AUTHORIZATION_URL: "https://auth.example.com/application/o/authorize/"
+  CMD_OAUTH2_TOKEN_URL: "https://auth.example.com/application/o/token/"
+  CMD_OAUTH2_USER_PROFILE_URL: "https://auth.example.com/application/o/userinfo/"
+  CMD_OAUTH2_USER_PROFILE_ID_ATTR: "sub"
+  CMD_OAUTH2_USER_PROFILE_USERNAME_ATTR: "preferred_username"
+  CMD_OAUTH2_USER_PROFILE_DISPLAY_NAME_ATTR: "name"
+  CMD_OAUTH2_USER_PROFILE_EMAIL_ATTR: "email"
+  # Second gate behind the Authentik admins policy binding: HedgeDoc rejects
+  # logins whose userinfo `groups` claim lacks `admins`. Needs scope-groups
+  # on the provider, otherwise every login fails with "Permission denied".
+  CMD_OAUTH2_ROLES_CLAIM: "groups"
+  CMD_OAUTH2_ACCESS_ROLE: "admins"
+  CMD_CSP_ALLOW_FRAMING: "false"
+  CMD_CSP_ALLOW_PDF_EMBED: "false"
+  CMD_ALLOW_GRAVATAR: "false"
+  # Keeps /status and /metrics off the public host; /_health (probes) is
+  # served regardless.
+  CMD_ENABLE_STATS_API: "false"
