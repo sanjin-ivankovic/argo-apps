@@ -1,0 +1,17 @@
+---
+# PriceBuddy handles authentication itself (built-in account login). LAN-only
+# (lan entrypoint) and no Traefik ForwardAuth gate here.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: pricebuddy-ingressroute
+  namespace: pricebuddy
+spec:
+  entryPoints:
+    - lan
+  routes:
+    - match: Host(`pricebuddy.example.com`)
+      kind: Rule
+      services:
+        - name: pricebuddy
+          port: 80

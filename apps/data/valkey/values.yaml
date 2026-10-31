@@ -1,0 +1,54 @@
+---
+# ============================================================================
+# Valkey Configuration
+# Helm Chart: valkey (homelab custom, official valkey/valkey image — see
+# helm-charts charts/valkey)
+# Purpose: Shared Valkey — db 1 SearXNG (cache/limiter), db 2 SnapOtter
+#          (BullMQ queues), db 3 OneTimeSecret (ALL of its state).
+# ============================================================================
+
+# Service must stay exactly `valkey-primary` — every consumer DSN points at
+# valkey-primary.valkey.svc.cluster.local.
+fullnameOverride: valkey-primary
+
+priorityClassName: high-priority-stateful
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# Live footprint is a few MB; limits leave generous headroom without
+# threatening the namespace quota.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+existingSecret: valkey-auth
+secretKeys:
+  password: password
+
+# Chart defaults are load-bearing and intentionally not overridden here:
+# AOF on + RDB auto-save off, FLUSHDB/FLUSHALL disabled, and NO maxmemory /
+# eviction policy — noeviction protects SnapOtter's BullMQ queues and
+# OneTimeSecret's state from silent eviction.
+
+persistence:
+  storageClass: longhorn
+  size: 8Gi
+
+# Nightly RDB snapshot to its own PVC — OneTimeSecret keeps all state here;
+# restore notes in docs/BACKUP-DR.md.
+backup:
+  enabled: true
+  persistence:
+    storageClass: longhorn
+    size: 5Gi

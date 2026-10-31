@@ -1,0 +1,20 @@
+---
+# On both entrypoints (tunnel + LAN). No authentik-forwardauth middleware:
+# Stirling-PDF requires login (SECURITY_ENABLELOGIN) and signs users in
+# through Authentik's OIDC provider.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: stirling-pdf-ingressroute
+  namespace: stirling-pdf
+spec:
+  entryPoints:
+    - websecure
+    - lan
+  routes:
+    - kind: Rule
+      match: Host(`pdf.example.com`)
+      services:
+        - kind: Service
+          name: stirling-pdf
+          port: 80

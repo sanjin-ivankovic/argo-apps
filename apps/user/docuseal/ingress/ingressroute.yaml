@@ -1,0 +1,45 @@
+---
+# LAN route: DocuSeal's built-in account login only, no ForwardAuth.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: docuseal-ingressroute
+  namespace: docuseal
+spec:
+  entryPoints:
+    - lan
+  routes:
+    - match: Host(`docuseal.example.com`)
+      kind: Rule
+      services:
+        - name: docuseal
+          port: 80
+---
+# Public route (Cloudflare tunnel origin): the built-in login sits behind the
+# Authentik forward-auth gate. Requires the docuseal proxy provider in
+# apps/infra/authentik/blueprints/10-proxy-providers.yaml.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: docuseal-public-ingressroute
+  namespace: docuseal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`docuseal.example.com`)
+      middlewares:
+        - name: authentik-forwardauth
+          namespace: authentik
+      kind: Rule
+      services:
+        - name: docuseal
+          port: 80
+    # The outpost's own endpoints (login redirect target, callback). Longer
+    # rule wins Traefik's default priority; carries no auth middleware.
+    - match: Host(`docuseal.example.com`) && PathPrefix(`/outpost.goauthentik.io/`)
+      kind: Rule
+      services:
+        - name: authentik-server
+          namespace: authentik
+          port: 80

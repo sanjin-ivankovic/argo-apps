@@ -1,0 +1,17 @@
+---
+# LAN only: no websecure route and no Authentik. ntfy enforces its own auth
+# (default deny-all); phones off the LAN reach it over WireGuard.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ntfy-ingressroute
+  namespace: ntfy
+spec:
+  entryPoints:
+    - lan
+  routes:
+    - match: Host(`ntfy.example.com`)
+      kind: Rule
+      services:
+        - name: ntfy
+          port: 80

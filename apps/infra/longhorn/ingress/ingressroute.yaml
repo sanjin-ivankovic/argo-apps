@@ -1,0 +1,22 @@
+---
+# Longhorn UI (longhorn-frontend, port 80) has NO authentication of its own:
+# anyone who reaches the host can delete volumes or disable nodes. It is
+# therefore bound to the lan entrypoint only (10.10.0.67, never on the
+# Cloudflare tunnel) with no ForwardAuth gate; the LAN is the boundary.
+# A websecure route for it needs the authentik-forwardauth middleware and a
+# longhorn proxy provider in apps/infra/authentik/blueprints/.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: longhorn-ingressroute
+  namespace: longhorn-system
+spec:
+  entryPoints:
+    - lan
+  routes:
+    - kind: Rule
+      match: Host(`longhorn.example.com`)
+      services:
+        - kind: Service
+          name: longhorn-frontend
+          port: 80

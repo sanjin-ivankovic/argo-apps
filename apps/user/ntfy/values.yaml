@@ -1,0 +1,40 @@
+---
+# ============================================================================
+# ntfy Configuration
+# Helm Chart: ntfy 1.0.0 (homelab custom chart)
+# Purpose: Push notifications for Komodo alerts and GitLab pipelines.
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+# NTFY_AUTH_USERS (bcrypt) and NTFY_AUTH_TOKENS come from this secret
+# (kryptos/configs/ntfy.yaml).
+existingSecret: "ntfy-secret"
+
+# env replaces the chart's env map key by key, so the chart defaults
+# (NTFY_LISTEN_HTTP, NTFY_CACHE_FILE, NTFY_AUTH_FILE) stay in effect.
+env:
+  NTFY_BASE_URL: "https://ntfy.example.com"
+  # iOS cannot receive pushes from a self-hosted server directly: ntfy sends a
+  # poll request (message ID only, no content) through ntfy.sh, and the app
+  # then fetches the message from this server.
+  NTFY_UPSTREAM_BASE_URL: "https://ntfy.sh"
+  NTFY_BEHIND_PROXY: "true"
+  NTFY_ENABLE_LOGIN: "true"
+  NTFY_AUTH_DEFAULT_ACCESS: "deny-all"
+  # maintainer is admin and reads every topic. Each publisher writes only its own
+  # topic: its token grants full access to its user, so the ACL is the limit.
+  NTFY_AUTH_ACCESS: "komodo:komodo-alerts:wo,gitlab:gitlab-pipelines:wo"

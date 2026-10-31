@@ -1,0 +1,36 @@
+---
+# ============================================================================
+# PrivateBin Configuration
+# Helm Chart: privatebin 1.0.0 (homelab custom chart)
+# Purpose: Minimal, encrypted online pastebin (behind Authelia SSO).
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+resources:
+  requests:
+    cpu: "25m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "256Mi"
+
+# ============================================================================
+# Persistence
+# ============================================================================
+
+persistence:
+  storageClass: "longhorn"

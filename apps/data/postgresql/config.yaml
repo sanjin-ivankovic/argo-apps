@@ -1,0 +1,6 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+# Shared PostgreSQL cluster — deployed before the services that depend on it.
+namespace: postgresql
+syncWave: "4"
+createNamespace: true

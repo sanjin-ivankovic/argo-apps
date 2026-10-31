@@ -1,0 +1,62 @@
+---
+# ============================================================================
+# Stirling-PDF Configuration
+# Helm Chart: stirling-pdf 1.1.0 (homelab custom chart)
+# Purpose: Self-hosted PDF toolset; logs in through Authentik OIDC.
+# ============================================================================
+# Override default values for Stirling PDF chart
+
+# ============================================================================
+# Workload (security context, scheduling, resources)
+# ============================================================================
+
+# Priority class for normal workloads
+priorityClassName: normal-priority
+
+# Node placement - schedule on any worker node
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# Increase memory limit and tune JVM to prevent OOM: Metaspace exhaustion
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "100m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
+
+# ============================================================================
+# Application (environment + authentication)
+# ============================================================================
+
+env:
+  DOCKER_ENABLE_SECURITY: "true"
+  SECURITY_ENABLELOGIN: "true"
+  SYSTEM_DEFAULTLOCALE: "en-US"
+  # Public URL used to build the OAuth2 callback and browser-facing links.
+  SYSTEM_BACKENDURL: "https://pdf.example.com"
+  SYSTEM_FRONTENDURL: "https://pdf.example.com"
+  # Authentik is the only way in: no password form, and the login page
+  # redirects straight to the single SSO provider. Break-glass for the local
+  # admin is setting SECURITY_LOGINMETHOD back to "all".
+  SECURITY_LOGINMETHOD: "oauth2"
+  SECURITY_SSOAUTOLOGIN: "true"
+
+# Native OIDC against Authentik — no forward-auth middleware on the
+# IngressRoute. The Authentik admins policy binding is the allow-list;
+# Stirling-PDF auto-creates every user Authentik lets through.
+# Callback https://pdf.example.com/login/oauth2/code/authentik is registered in
+# apps/infra/authentik/blueprints/20-oauth2-providers.yaml; its last segment
+# must equal `provider`.
+oidc:
+  enabled: true
+  provider: "authentik"
+  issuer: "https://auth.example.com/application/o/stirling-pdf/"
+  clientId: "stirling-pdf"
+  existingSecret: "stirling-pdf-secret"

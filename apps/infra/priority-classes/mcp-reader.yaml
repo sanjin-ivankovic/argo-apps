@@ -1,0 +1,148 @@
+---
+# Read-only identity for the homelab MCP servers (kubernetes-mcp-server and the
+# drift report). Built-in `view` covers namespaced workloads but no Secrets;
+# mcp-reader adds cluster-scoped kinds and the CRDs the lab runs on. Neither
+# grants nodes/proxy, so node log and stats tools return 403 by design.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-reader
+  namespace: kube-system
+
+---
+# Long-lived token for the out-of-cluster MCP client. The token controller
+# fills in data; scripts/make-readonly-kubeconfig.sh in homelab-mcp reads it.
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: mcp-reader-token
+  namespace: kube-system
+  annotations:
+    kubernetes.io/service-account.name: mcp-reader
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mcp-reader
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "volumeattachments", "csidrivers", "csinodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+  # CRDs listed by name, no wildcards: a new CRD stays unreadable until added.
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - applications
+      - applicationsets
+      - appprojects
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["bitnami.com"]
+    resources:
+      - sealedsecrets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["cert-manager.io"]
+    resources:
+      - certificaterequests
+      - certificates
+      - clusterissuers
+      - issuers
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["acme.cert-manager.io"]
+    resources:
+      - challenges
+      - orders
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["longhorn.io"]
+    resources:
+      - backingimagedatasources
+      - backingimagemanagers
+      - backingimages
+      - backupbackingimages
+      - backups
+      - backuptargets
+      - backupvolumes
+      - enginefrontends
+      - engineimages
+      - engines
+      - instancemanagers
+      - nodes
+      - orphans
+      - recurringjobs
+      - replicas
+      - settings
+      - shardgroups
+      - shards
+      - sharemanagers
+      - snapshotgroups
+      - snapshots
+      - supportbundles
+      - systembackups
+      - systemrestores
+      - volumeattachments
+      - volumes
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metallb.io"]
+    resources:
+      - bfdprofiles
+      - bgpadvertisements
+      - bgppeers
+      - communities
+      - configurationstates
+      - ipaddresspools
+      - l2advertisements
+      - servicebgpstatuses
+      - servicel2statuses
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["traefik.io"]
+    resources:
+      - ingressroutes
+      - ingressroutetcps
+      - ingressrouteudps
+      - middlewares
+      - middlewaretcps
+      - serverstransports
+      - serverstransporttcps
+      - tlsoptions
+      - tlsstores
+      - traefikservices
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mcp-reader
+subjects:
+  - kind: ServiceAccount
+    name: mcp-reader
+    namespace: kube-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-reader-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: mcp-reader
+    namespace: kube-system

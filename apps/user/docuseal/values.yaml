@@ -1,0 +1,54 @@
+---
+# ============================================================================
+# DocuSeal Configuration
+# Helm Chart: docuseal 1.0.2 (homelab custom chart)
+# Purpose: Document signing platform; uses the shared PostgreSQL cluster.
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Rails app.
+resources:
+  requests:
+    cpu: "250m"
+    memory: "256Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# ============================================================================
+# Persistence
+# ============================================================================
+
+# Holds uploaded documents/templates at /data.
+persistence:
+  enabled: true
+  storageClass: "longhorn"
+  size: 10Gi
+
+# ============================================================================
+# Secrets & Environment
+# ============================================================================
+
+# Secret containing DATABASE_URL + SECRET_KEY_BASE.
+existingSecret: "docuseal-secret"
+
+# NOTE: no FORCE_SSL — Traefik terminates TLS at the edge (websecure only) and
+# proxies plain HTTP to the pod. FORCE_SSL=true makes Puma reject the plain-HTTP
+# upstream ("HTTP response to HTTPS client") and breaks the health probes.
+# HOST is still set so DocuSeal generates absolute https:// links in emails.
+env:
+  HOST: docuseal.example.com
