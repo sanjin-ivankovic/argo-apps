@@ -1,0 +1,75 @@
+---
+# ============================================================================
+# Wiki.js Configuration
+# Helm Chart: wiki (upstream, oci://ghcr.io/requarks/charts)
+# Purpose: Homelab operator handbook; uses the shared PostgreSQL cluster.
+# ============================================================================
+# The chart's own pod and container securityContext (non-root 1000,
+# read-only root filesystem, all capabilities dropped) and its /_live and
+# /_ready probes are kept as shipped.
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# scheduler.workers defaults to "auto": limits.cpu minus one, so this limit
+# gives one background worker (search indexing, rendering, Puppeteer).
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# ============================================================================
+# Storage
+# ============================================================================
+
+# Pages and uploaded assets live in PostgreSQL, which the nightly
+# postgresql-backup dump covers. /wiki/data holds only caches that rebuild
+# themselves, and no Longhorn RecurringJob backs up PVCs, so an emptyDir is
+# the right home for it.
+persistence:
+  enabled: false
+  sizeLimit: 2Gi
+
+# ============================================================================
+# Database (shared PostgreSQL)
+# ============================================================================
+
+postgresql:
+  enabled: false
+
+# The role owns the database (postgresql chart hook), which is enough for
+# Wiki.js to create its trusted ltree and pg_trgm extensions at boot.
+externalDatabase:
+  parameters:
+    host: postgresql.postgresql.svc.cluster.local
+    port: 5432
+    database: wiki
+    user: wiki
+    existingSecret: wiki-secret
+    existingSecretPasswordKey: DB_PASS
+  schema: wiki
+
+# ============================================================================
+# First-boot administrator
+# ============================================================================
+
+# Read only on the first start against an empty database; afterwards the
+# account lives in the database and its password is changed in the UI.
+admin:
+  email: admin@example.com
+  existingSecret: wiki-secret
+  existingSecretPasswordKey: ADMIN_PASS

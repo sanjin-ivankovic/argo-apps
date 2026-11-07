@@ -1,0 +1,434 @@
+---
+# ============================================================================
+# Traefik Configuration
+# Helm Chart: traefik 40.2.0 (official Traefik chart, app v3.7.1)
+# Purpose: Edge router / ingress controller — terminates TLS and routes
+#          *.example.com traffic via IngressRoute CRDs, on two entrypoints:
+#          `lan` (LAN clients) and `websecure` (Cloudflare tunnel origin).
+# ============================================================================
+
+# Keep resource names stable so the chart doesn't rename Service/Deployment/SA
+# (would otherwise release the MetalLB IP and break PodAntiAffinity selectors).
+nameOverride: "traefik"
+fullnameOverride: "traefik"
+
+# Image comes from the chart default (public docker.io/traefik, matching the
+# chart's appVersion). No registry pull secret required.
+
+# ============================================================================
+# Deployment Configuration
+# ============================================================================
+
+deployment:
+  enabled: true
+  kind: Deployment
+  replicas: 2 # High availability with 2 replicas (spread across worker nodes)
+
+# ============================================================================
+# Node Placement & Scheduling
+# ============================================================================
+
+# Priority class for critical infrastructure
+priorityClassName: critical-infrastructure
+
+# Deploy on worker nodes with HA spread across different hosts
+affinity:
+  # Node affinity: MUST run on worker nodes
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+  # Pod anti-affinity: Spread replicas across different nodes for HA
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: traefik
+        topologyKey: kubernetes.io/hostname
+
+# Pod Disruption Budget for high availability
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1 # Ensure at least 1 pod available during updates
+
+# Rolling update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1 # Only one pod down at a time
+    maxSurge: 0 # No extra pods during update
+
+# ============================================================================
+# Ingress Class Configuration
+# ============================================================================
+
+ingressClass:
+  enabled: true
+  isDefaultClass: true # Set as default ingress controller
+  name: "" # Use chart default name
+
+# ============================================================================
+# Traefik Dashboard & Health Check
+# ============================================================================
+
+ingressRoute:
+  # Traefik dashboard at https://traefik.example.com/dashboard/ (no auth;
+  # LAN-only via the lan entrypoint, served through api@internal).
+  dashboard:
+    enabled: true
+    matchRule: |
+      Host(`traefik.example.com`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))
+    entryPoints: ["lan"]
+
+  # Kubernetes liveness/readiness probes
+  healthcheck:
+    enabled: true
+
+# ============================================================================
+# Providers Configuration
+# ============================================================================
+
+providers:
+  kubernetesCRD:
+    enabled: true
+    # Allow IngressRoutes to reference services in other namespaces
+    allowCrossNamespace: true
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+
+# logs:
+#   general:
+#     format: json
+#     level: DEBUG  # Uncomment for troubleshooting
+
+# ============================================================================
+# Global Configuration
+# ============================================================================
+
+global:
+  checkNewVersion: false # Disable version check
+  sendAnonymousUsage: false # Disable telemetry
+  # Drop request headers whose names alias a managed one (X_Auth_User,
+  # X.Auth.User for X-Auth-User) on every entry point: PHP, nginx and other
+  # CGI-style backends read them as the dash form, so a client could spoof the
+  # identity headers authentik-forwardauth sets.
+  aliasHeadersStrategy: delete
+
+# Additional CLI arguments
+additionalArguments:
+  - "--api.disabledashboardad=true" # Disable dashboard ads
+  # Legacy router/middleware names: true renames every CRD middleware
+  # (traefik-chain-no-auth@kubernetescrd becomes traefik_chain-no-auth), which
+  # breaks the entrypoint middleware references below. The chart only renders
+  # this flag when true, so false needs an explicit argument.
+  - "--providers.kubernetescrd.safeNaming=false"
+
+# ============================================================================
+# Entry Points Configuration
+# ============================================================================
+
+ports:
+  # Two audiences, each with an HTTPS entrypoint and an HTTP one that only
+  # redirects to it. Container ports stay above 1024 so nothing in the pod
+  # needs privileged binds: 8xxx is the LAN, 9xxx is public, 9000 and 9100
+  # are the chart's own API and metrics ports. The Service maps them to 80
+  # and 443.
+  #
+  # The chart's default `web` and `websecure` entrypoints are removed; the
+  # `public` pair replaces them on the default (ClusterIP) Service.
+  web: null
+  websecure: null
+
+  # API and ping. Probes target it; it is never exposed on a Service. The
+  # dashboard is served by the IngressRoute below through api@internal.
+  traefik:
+    port: 9000
+
+  # LAN entrypoint. Exposed solely on the `traefik-lan` Service (where LAN DNS
+  # points every *.example.com name), never on the default Service, and the
+  # Cloudflare tunnel's origin is `public` — so a route bound here cannot be
+  # reached from the internet. Every app has a `lan` route without
+  # ForwardAuth; a public app adds a second, gated route on `public` for the
+  # same host.
+  lan:
+    port: 8443
+    exposedPort: 443
+    expose:
+      default: false
+      lan: true
+    # Trust X-Forwarded-* headers only from in-cluster sources.
+    # LAN clients on 10.140.0.0/24 get headers stripped; Traefik then
+    # derives them from the connection.
+    # CIDRs come from kube-controller-manager; update if cluster is
+    # re-bootstrapped with different --cluster-cidr / --service-cluster-ip-range.
+    forwardedHeaders:
+      trustedIPs:
+        - 10.244.0.0/16 # pod CIDR
+        - 10.96.0.0/12 # service CIDR
+    http:
+      # %2F stays allowed: the GitLab, Harbor and registry APIs carry it in
+      # paths. Encoded backslash and NUL have no legitimate use here and are
+      # the classic path-confusion characters.
+      encodedCharacters:
+        allowEncodedSlash: true
+        allowEncodedBackSlash: false
+        allowEncodedNullCharacter: false
+      tls:
+        enabled: true
+      middlewares:
+        # Apply rate limiting and security headers
+        - traefik-chain-no-auth@kubernetescrd
+
+  # Plain HTTP on the LAN address, redirecting to `lan`.
+  lan-http:
+    port: 8080
+    exposedPort: 80
+    expose:
+      default: false
+      lan: true
+    http:
+      redirections:
+        entryPoint:
+          to: lan
+          scheme: https
+
+  # Public entrypoint: the Cloudflare tunnel's origin, reached only by
+  # ClusterIP. It has no LoadBalancer address, so it is unreachable from the
+  # LAN and the firewall needs no rule for it.
+  public:
+    port: 9443
+    exposedPort: 443
+    expose:
+      default: true
+      lan: false
+    forwardedHeaders:
+      trustedIPs:
+        - 10.244.0.0/16 # pod CIDR
+        - 10.96.0.0/12 # service CIDR
+    http:
+      encodedCharacters:
+        allowEncodedSlash: true
+        allowEncodedBackSlash: false
+        allowEncodedNullCharacter: false
+      tls:
+        enabled: true
+      middlewares:
+        - traefik-chain-no-auth@kubernetescrd
+
+  # Plain HTTP for the tunnel, redirecting to `public`.
+  public-http:
+    port: 9080
+    exposedPort: 80
+    expose:
+      default: true
+      lan: false
+    http:
+      redirections:
+        entryPoint:
+          to: public
+          scheme: https
+
+# ============================================================================
+# Service Configuration
+# ============================================================================
+
+service:
+  enabled: true
+  # The default Service carries only the public entrypoints and is the
+  # Cloudflare tunnel's origin by ClusterIP. It has no LoadBalancer address.
+  # The chart reads the type from `spec`, not from a top-level `type`.
+  spec:
+    type: ClusterIP
+  additionalServices:
+    # Renders as Service `traefik-lan`, carrying only the lan/lan-http ports,
+    # on the LAN address every *.example.com name resolves to. Shares the
+    # address with GitLab SSH for source.example.com
+    # (apps/infra/external-services/services/gitlab-ssh-lan-service.yaml) via
+    # the allow-shared-ip key; both Services must keep externalTrafficPolicy:
+    # Cluster (chart default) for MetalLB to permit the share.
+    lan:
+      spec:
+        type: LoadBalancer
+      annotations:
+        metallb.io/loadBalancerIPs: "10.140.0.60"
+        metallb.io/allow-shared-ip: "lan-shared-ip"
+
+# ============================================================================
+# Persistence Configuration
+# ============================================================================
+
+persistence:
+  enabled: false # Not required for stateless operation
+  name: data
+  accessMode: ReadWriteOnce
+  size: 128Mi
+  storageClass: "longhorn"
+  volumeName: ""
+  path: /data
+
+# ============================================================================
+# Custom Kubernetes Resources (CRDs)
+# ============================================================================
+
+extraObjects:
+  # --------------------------------------------------------------------------
+  # TLS Configuration
+  # --------------------------------------------------------------------------
+
+  # TLS Options - Modern cipher suites and TLS 1.2+ only
+  - apiVersion: traefik.io/v1alpha1
+    kind: TLSOption
+    metadata:
+      name: tls-opts
+      namespace: traefik
+    spec:
+      minVersion: VersionTLS12 # TLS 1.2 minimum for security
+      cipherSuites:
+        # TLS 1.2 cipher suites
+        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+        # TLS 1.3 cipher suites
+        - TLS_AES_128_GCM_SHA256
+        - TLS_AES_256_GCM_SHA384
+        - TLS_CHACHA20_POLY1305_SHA256
+        # Fallback indicator
+        - TLS_FALLBACK_SCSV
+      curvePreferences:
+        - CurveP521
+        - CurveP384
+      sniStrict: true # Require valid SNI
+
+  # TLS Store - Default wildcard certificate for *.example.com
+  - apiVersion: traefik.io/v1alpha1
+    kind: TLSStore
+    metadata:
+      name: default
+      namespace: traefik
+    spec:
+      defaultCertificate:
+        secretName: example-com-wildcard-tls # Production cert (use when ready)
+        # secretName: example-com-wildcard-staging-tls # Staging cert for testing
+
+  # --------------------------------------------------------------------------
+  # Middleware Chain - No Authentication Required
+  # --------------------------------------------------------------------------
+
+  # Chain middleware combining rate limiting and security headers
+  - apiVersion: traefik.io/v1alpha1
+    kind: Middleware
+    metadata:
+      name: chain-no-auth
+      namespace: traefik
+    spec:
+      chain:
+        middlewares:
+          - name: middlewares-rate-limit
+          - name: middlewares-secure-headers
+
+  # --------------------------------------------------------------------------
+  # Rate Limiting Middleware
+  # --------------------------------------------------------------------------
+
+  # Protects against DDoS and abuse.
+  # burst sized for SPAs that fetch many ES-module chunks on first load
+  # (60+ chunks in one burst). A small burst caused late chunks to be
+  # RST_STREAM'd by Traefik mid-HTTP/2 connection, which the browser
+  # surfaces as NS_ERROR_CORRUPTED_CONTENT.
+  - apiVersion: traefik.io/v1alpha1
+    kind: Middleware
+    metadata:
+      name: middlewares-rate-limit
+      namespace: traefik
+    spec:
+      rateLimit:
+        average: 200 # sustained req/s per source IP
+        burst: 300 # absorb SPA first-load chunk bursts
+        # Bucket by client IP from X-Forwarded-For (depth: 1 = closest proxy).
+        # Without this, public traffic via cloudflared (e.g. privatebin) all
+        # bucket under the cloudflared pod IP, letting one noisy public user
+        # rate-limit everyone. depth: 1 strips the Cloudflare edge IP from
+        # the right of XFF, leaving the real client IP. LAN traffic has no
+        # XFF and falls back to the direct peer IP — also correct.
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+  # --------------------------------------------------------------------------
+  # Security Headers Middleware
+  # --------------------------------------------------------------------------
+
+  # Applies security headers to all responses
+  - apiVersion: traefik.io/v1alpha1
+    kind: Middleware
+    metadata:
+      name: middlewares-secure-headers
+      namespace: traefik
+    spec:
+      headers:
+        # CORS Configuration
+        accessControlAllowMethods:
+          - GET
+          - OPTIONS
+          - PUT
+        accessControlMaxAge: 100
+
+        # XSS Protection
+        browserXssFilter: true
+
+        # MIME-type sniffing prevention
+        contentTypeNosniff: true
+
+        # Clickjacking protection
+        customFrameOptionsValue: SAMEORIGIN
+
+        # Custom request headers
+        customRequestHeaders:
+          X-Forwarded-Proto: https # Force HTTPS in backend
+
+        # Custom response headers
+        customResponseHeaders:
+          X-Robots-Tag: >
+            none,noindex,nofollow,noarchive,nosnippet,notranslate,noimageindex
+          server: "" # Hide server version
+
+        # HSTS (HTTP Strict Transport Security)
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 63072000 # 2 years
+
+        # Forwarded host headers
+        hostsProxyHeaders:
+          - X-Forwarded-Host
+
+        # Permissions policy (disable intrusive features)
+        permissionsPolicy: >
+          camera=(), microphone=(), geolocation=(), payment=(), usb=(), vr=()
+
+        # Referrer policy
+        referrerPolicy: same-origin
+
+# ============================================================================
+# Metrics (kube-prometheus-stack)
+# ============================================================================
+
+metrics:
+  prometheus:
+    # Per-router (per host) request and latency series; about 40 routers.
+    addRoutersLabels: true
+    service:
+      enabled: true
+    # Offline renders advertise no CRDs; the chart would drop the
+    # ServiceMonitor without this.
+    disableAPICheck: true
+    serviceMonitor:
+      enabled: true

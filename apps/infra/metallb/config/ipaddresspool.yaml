@@ -1,0 +1,11 @@
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: default
+  namespace: metallb-system
+spec:
+  # The block proxmox-infra docs/NETWORK.md reserves for MetalLB on 40_SERVER.
+  # Nothing else may take an address in it; change both together.
+  addresses:
+    - 10.140.0.60-10.140.0.70

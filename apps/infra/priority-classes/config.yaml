@@ -1,0 +1,5 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+# priority-classes is cluster-scoped: no destination namespace, no finalizers.
+syncWave: "-1"
+createNamespace: false

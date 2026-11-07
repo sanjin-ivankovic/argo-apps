@@ -1,0 +1,15 @@
+---
+# The upstream controller.yaml ships a metrics Service with an unnamed port,
+# so the endpoint names the target port.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sealed-secrets-controller
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: sealed-secrets-controller-metrics
+  endpoints:
+    - targetPort: 8081
+      interval: 60s

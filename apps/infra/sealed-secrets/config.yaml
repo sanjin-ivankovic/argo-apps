@@ -1,0 +1,5 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+namespace: kube-system
+syncWave: "0"
+createNamespace: false

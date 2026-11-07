@@ -1,0 +1,20 @@
+---
+# GitLab web on the lan entrypoint. GitLab has its own multi-user auth, so no
+# SSO ForwardAuth here (matches bitwarden). LAN-only. SSH: gitlab-ssh-lan on
+# the same LAN VIP.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: gitlab-lan-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - lan
+  routes:
+    - kind: Rule
+      match: Host(`source.example.com`)
+      services:
+        - kind: Service
+          name: gitlab
+          port: 8080
+          scheme: http

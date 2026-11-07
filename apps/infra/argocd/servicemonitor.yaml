@@ -1,0 +1,16 @@
+---
+# Every ArgoCD component Service (application controller, server, repo
+# server, ApplicationSet, notifications) exposes a port named `metrics`;
+# one ServiceMonitor picks them all up for kube-prometheus-stack.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: argocd
+  endpoints:
+    - port: metrics
+      interval: 30s

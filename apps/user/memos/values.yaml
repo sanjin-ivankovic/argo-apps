@@ -1,0 +1,68 @@
+---
+# ============================================================================
+# Memos Configuration
+# Helm Chart: memos 1.0.1 (homelab custom chart)
+# Purpose: Self-hosted note-taking service; uses the shared PostgreSQL cluster.
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# ============================================================================
+# Service-link guard (Memos MEMOS_PORT gotcha)
+# ============================================================================
+
+# Kubernetes would otherwise inject MEMOS_PORT=tcp://<svc-ip>:5230, which Memos
+# misreads as its listen port. Disable service links; env.MEMOS_PORT below is
+# the second layer of defence.
+enableServiceLinks: false
+
+service:
+  port: 80
+  targetPort: 5230
+
+# ============================================================================
+# Storage (local assets only — memo content lives in PostgreSQL)
+# ============================================================================
+
+persistence:
+  enabled: true
+  storageClass: "longhorn"
+  size: 1Gi
+  mountPath: /var/opt/memos
+  accessModes:
+    - ReadWriteOnce
+
+# ============================================================================
+# Database & Environment
+# ============================================================================
+
+# MEMOS_DSN (the PostgreSQL connection string) is injected from this secret.
+existingSecret: "memos-secret"
+secretKeys:
+  dsn: MEMOS_DSN
+
+env:
+  MEMOS_PORT: "5230"
+  MEMOS_DRIVER: "postgres"
+  MEMOS_INSTANCE_URL: "https://memos.example.com"

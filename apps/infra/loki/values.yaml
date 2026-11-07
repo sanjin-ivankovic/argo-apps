@@ -1,0 +1,116 @@
+---
+# ============================================================================
+# Loki Configuration
+# Helm Chart: loki 7.3.0 (Grafana)
+# Purpose: Log store for the cluster (Alloy DaemonSet, apps/infra/alloy) and
+#          the Proxmox LXCs (proxmox-infra monitoring_agent role). Queried by
+#          Grafana in kube-prometheus-stack.
+# ============================================================================
+
+# One process, one Longhorn volume. The chart default (SimpleScalable)
+# needs object storage and runs read/write/backend replicas.
+deploymentMode: SingleBinary
+
+loki:
+  # info logs index-table housekeeping and every query it runs. Merges with
+  # the chart's server ports.
+  server:
+    log_level: warn
+  # Single tenant. Nothing outside the cluster reaches Loki except the
+  # basic-auth push route in ingress/.
+  auth_enabled: false
+  # No anonymous usage reports to Grafana Labs (Loki sends them by default).
+  analytics:
+    reporting_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  # The first period must start before the oldest sample Loki accepts
+  # (reject_old_samples_max_age, 7 days): a push carrying an older entry has
+  # no schema, Loki answers 500, and Alloy retries that batch forever,
+  # blocking everything queued behind it. The LXC Docker sources replay each
+  # container's full log history on their first run.
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 336h
+    reject_old_samples: true
+    reject_old_samples_max_age: 168h
+    max_cache_freshness_per_query: 10m
+    split_queries_by_interval: 15m
+    query_timeout: 300s
+    volume_enabled: true
+    ingestion_rate_mb: 8
+    ingestion_burst_size_mb: 16
+  # Retention is enforced by the compactor; without retention_enabled the
+  # 14 days above are never applied and the volume fills.
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+singleBinary:
+  replicas: 1
+  priorityClassName: high-priority-stateful
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  persistence:
+    enabled: true
+    size: 30Gi
+
+# Scalable and microservice components stay off in SingleBinary mode.
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+
+ruler:
+  enabled: false
+
+# Memcached caches request several GiB by default; a homelab query load does
+# not need them.
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+
+# Clients talk to the loki Service directly.
+gateway:
+  enabled: false
+
+lokiCanary:
+  enabled: false
+test:
+  enabled: false
+
+sidecar:
+  rules:
+    enabled: false
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+  dashboards:
+    enabled: false
+  rules:
+    enabled: false

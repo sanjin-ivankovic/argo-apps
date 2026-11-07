@@ -1,0 +1,199 @@
+---
+# Proxmox LXC hosts, scraped from outside the cluster: node_exporter (9100),
+# cAdvisor (9338) and Alloy's own metrics (12345). The agents come from
+# proxmox-infra ansible/roles/monitoring_agent; the Core-zone hosts
+# (technitium, pihole) are reachable through the `monitoring_exporters` port
+# group in terraform/unifi. Hosts and IPs follow
+# terraform/lxc/instances/lxc.auto.tfvars. `instance` is the host name, so
+# alerts and dashboards show names instead of IP:port.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: lxc-node
+spec:
+  jobName: lxc-node
+  scrapeInterval: 30s
+  staticConfigs:
+    - labels: {zone: servers}
+      targets:
+        - 10.140.0.10:9100
+        - 10.140.0.11:9100
+        - 10.140.0.12:9100
+        - 10.140.0.13:9100
+        - 10.140.0.14:9100
+        - 10.140.0.16:9100
+    - labels: {zone: core}
+      targets:
+        - 10.110.0.10:9100
+        - 10.110.0.11:9100
+        - 10.110.0.12:9100
+        - 10.110.0.13:9100
+  relabelings:
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.10:.*'
+      targetLabel: instance
+      replacement: gitlab
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.11:.*'
+      targetLabel: instance
+      replacement: gitlab-runner
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.12:.*'
+      targetLabel: instance
+      replacement: bitwarden
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.13:.*'
+      targetLabel: instance
+      replacement: paperless-ngx
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.14:.*'
+      targetLabel: instance
+      replacement: komodo
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.16:.*'
+      targetLabel: instance
+      replacement: semaphore
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.10:.*'
+      targetLabel: instance
+      replacement: technitium-1
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.11:.*'
+      targetLabel: instance
+      replacement: technitium-2
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.12:.*'
+      targetLabel: instance
+      replacement: pihole-1
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.13:.*'
+      targetLabel: instance
+      replacement: pihole-2
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: lxc-cadvisor
+spec:
+  jobName: lxc-cadvisor
+  scrapeInterval: 30s
+  staticConfigs:
+    - labels: {zone: servers}
+      targets:
+        - 10.140.0.10:9338
+        - 10.140.0.11:9338
+        - 10.140.0.12:9338
+        - 10.140.0.13:9338
+        - 10.140.0.14:9338
+        - 10.140.0.16:9338
+    - labels: {zone: core}
+      targets:
+        - 10.110.0.10:9338
+        - 10.110.0.11:9338
+        - 10.110.0.12:9338
+        - 10.110.0.13:9338
+  relabelings:
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.10:.*'
+      targetLabel: instance
+      replacement: gitlab
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.11:.*'
+      targetLabel: instance
+      replacement: gitlab-runner
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.12:.*'
+      targetLabel: instance
+      replacement: bitwarden
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.13:.*'
+      targetLabel: instance
+      replacement: paperless-ngx
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.14:.*'
+      targetLabel: instance
+      replacement: komodo
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.16:.*'
+      targetLabel: instance
+      replacement: semaphore
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.10:.*'
+      targetLabel: instance
+      replacement: technitium-1
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.11:.*'
+      targetLabel: instance
+      replacement: technitium-2
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.12:.*'
+      targetLabel: instance
+      replacement: pihole-1
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.13:.*'
+      targetLabel: instance
+      replacement: pihole-2
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: lxc-alloy
+spec:
+  jobName: lxc-alloy
+  scrapeInterval: 30s
+  staticConfigs:
+    - labels: {zone: servers}
+      targets:
+        - 10.140.0.10:12345
+        - 10.140.0.11:12345
+        - 10.140.0.12:12345
+        - 10.140.0.13:12345
+        - 10.140.0.14:12345
+        - 10.140.0.16:12345
+    - labels: {zone: core}
+      targets:
+        - 10.110.0.10:12345
+        - 10.110.0.11:12345
+        - 10.110.0.12:12345
+        - 10.110.0.13:12345
+  relabelings:
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.10:.*'
+      targetLabel: instance
+      replacement: gitlab
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.11:.*'
+      targetLabel: instance
+      replacement: gitlab-runner
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.12:.*'
+      targetLabel: instance
+      replacement: bitwarden
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.13:.*'
+      targetLabel: instance
+      replacement: paperless-ngx
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.14:.*'
+      targetLabel: instance
+      replacement: komodo
+    - sourceLabels: [__address__]
+      regex: '10\.40\.0\.16:.*'
+      targetLabel: instance
+      replacement: semaphore
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.10:.*'
+      targetLabel: instance
+      replacement: technitium-1
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.11:.*'
+      targetLabel: instance
+      replacement: technitium-2
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.12:.*'
+      targetLabel: instance
+      replacement: pihole-1
+    - sourceLabels: [__address__]
+      regex: '10\.10\.0\.13:.*'
+      targetLabel: instance
+      replacement: pihole-2

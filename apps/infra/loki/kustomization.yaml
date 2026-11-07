@@ -1,0 +1,21 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+helmCharts:
+  - name: loki
+    repo: https://grafana.github.io/helm-charts
+    version: 7.5.0
+    releaseName: loki
+    namespace: monitoring
+    valuesFile: values.yaml
+    # Offline renders advertise no CRDs; without this the chart drops its
+    # ServiceMonitor.
+    apiVersions:
+      - monitoring.coreos.com/v1/ServiceMonitor
+
+resources:
+  - ingress/ingressroute.yaml
+  - secrets/loki-push-auth-sealed-secret.yaml

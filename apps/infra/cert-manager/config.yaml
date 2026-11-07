@@ -1,0 +1,6 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+namespace: cert-manager
+syncWave: "0"
+createNamespace: true
+serverSideApply: true

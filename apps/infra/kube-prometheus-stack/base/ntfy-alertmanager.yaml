@@ -1,0 +1,130 @@
+---
+# Alertmanager has no ntfy receiver; this bridge takes its webhook and
+# publishes to the ntfy topic `alerts` as user `alertmanager` (write-only,
+# apps/user/ntfy/values.yaml NTFY_AUTH_ACCESS). The access token is the only
+# secret setting, so it lives in token.scfg (sealed) and is pulled in with
+# `include`; the parser merges it into the ntfy block below.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ntfy-alertmanager
+data:
+  config: |
+    include /etc/ntfy-alertmanager-secret/token.scfg
+    http-address :8080
+    log-level info
+    alert-mode multi
+
+    labels {
+        order "severity"
+
+        severity "critical" {
+            priority 5
+            tags "rotating_light"
+        }
+
+        severity "warning" {
+            priority 4
+            tags "warning"
+        }
+
+        severity "info" {
+            priority 2
+        }
+    }
+
+    resolved {
+        tags "white_check_mark"
+        priority 2
+    }
+
+    ntfy {
+        server http://ntfy.ntfy.svc.cluster.local
+        topic alerts
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ntfy-alertmanager
+  labels:
+    app.kubernetes.io/name: ntfy-alertmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ntfy-alertmanager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ntfy-alertmanager
+    spec:
+      priorityClassName: critical-infrastructure
+      automountServiceAccountToken: false
+      # The image declares no user; it only reads its config and makes
+      # outbound HTTP calls, so it runs as nobody.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/worker
+                    operator: Exists
+      containers:
+        - name: ntfy-alertmanager
+          image: docker.io/xenrox/ntfy-alertmanager:1.0.1@sha256:4dff34a4cb0ab4ba9925c8e21101c6cfc72ccd776223183c64d67b5799f516f7
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            tcpSocket:
+              port: http
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/ntfy-alertmanager
+              readOnly: true
+            - name: token
+              mountPath: /etc/ntfy-alertmanager-secret
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: ntfy-alertmanager
+        - name: token
+          secret:
+            secretName: ntfy-alertmanager-token
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ntfy-alertmanager
+  labels:
+    app.kubernetes.io/name: ntfy-alertmanager
+spec:
+  selector:
+    app.kubernetes.io/name: ntfy-alertmanager
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -1,0 +1,243 @@
+---
+# Alerts for the Proxmox LXC hosts (scrapeconfig-hosts.yaml) and for the
+# Talos etcd backup, which runs on semaphore and is invisible to the cluster.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-hosts
+spec:
+  groups:
+    - name: homelab-hosts
+      rules:
+        - alert: HostExporterDown
+          expr: up{job=~"lxc-node|lxc-cadvisor"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.job }} on {{ $labels.instance }} is unreachable"
+            description: >-
+              The host is down, the agent stopped (systemctl status
+              node_exporter or cadvisor), or the UniFi rule for Core hosts is
+              missing.
+
+        - alert: HostRootDiskLow
+          expr: |
+            node_filesystem_avail_bytes{job="lxc-node",mountpoint="/"}
+              / node_filesystem_size_bytes{job="lxc-node",mountpoint="/"} < 0.10
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.instance }} root disk below 10% free"
+            description: "{{ $value | humanizePercentage }} free on /."
+
+        - alert: HostRootDiskCritical
+          expr: |
+            node_filesystem_avail_bytes{job="lxc-node",mountpoint="/"}
+              / node_filesystem_size_bytes{job="lxc-node",mountpoint="/"} < 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.instance }} root disk below 5% free"
+            description: "{{ $value | humanizePercentage }} free on /."
+
+        - alert: HostMemoryLow
+          expr: |
+            node_memory_MemAvailable_bytes{job="lxc-node"}
+              / node_memory_MemTotal_bytes{job="lxc-node"} < 0.10
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.instance }} below 10% memory available"
+            description: "{{ $value | humanizePercentage }} of the LXC memory limit is available."
+
+        - alert: HostSystemdUnitFailed
+          expr: node_systemd_unit_state{job="lxc-node",state="failed"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.name }} failed on {{ $labels.instance }}"
+
+        - alert: HostContainerRestarting
+          expr: |
+            changes(container_start_time_seconds{job="lxc-cadvisor",name!=""}[30m]) > 2
+          labels:
+            severity: warning
+          annotations:
+            summary: "Container {{ $labels.name }} on {{ $labels.instance }} restarted {{ $value }} times in 30m"
+
+    - name: log-shipping
+      rules:
+        - alert: LogShipperDown
+          expr: up{job="lxc-alloy"} == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Alloy on {{ $labels.instance }} is not running; its logs are not reaching Loki"
+            description: "systemctl status alloy on the host (proxmox-infra monitoring_agent role)."
+
+        # A batch Loki rejects with a 5xx is retried, and blocks everything
+        # queued behind it until it succeeds or runs out of retries.
+        - alert: LogShipperPushFailing
+          expr: |
+            sum by (job, instance) (
+              increase(loki_write_request_duration_seconds_count{status_code=~"5.."}[15m])
+            ) > 5
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.instance }} ({{ $labels.job }}) keeps getting 5xx from Loki"
+            description: >-
+              Its queue is likely stalled. Check the Alloy log for "error
+              sending batch" and the Loki pod log for the matching push error.
+
+        - alert: LogShipperDroppingEntries
+          expr: |
+            sum by (job, instance, reason) (
+              increase(loki_write_dropped_entries_total[30m])
+            ) > 100
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.instance }} ({{ $labels.job }}) dropped {{ $value | humanize }} log entries in 30m"
+            description: "Reason: {{ $labels.reason }}."
+
+    - name: proxmox
+      rules:
+        - alert: PveExporterDown
+          expr: up{job="pve-exporter"} == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: pve-exporter cannot reach the Proxmox API
+            description: >-
+              Check the pve-exporter pod logs, the pve-exporter@pve!prometheus
+              token on pve and the UniFi rule servers_mgmt_pve_exporter.
+
+        - alert: PveGuestNotRunning
+          expr: |
+            pve_up{job="pve-exporter",id=~"(lxc|qemu)/.*"} == 0
+              and on (id) pve_onboot_status{job="pve-exporter"} == 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.id }} is set to start on boot but is not running"
+
+        - alert: PveStorageFull
+          expr: |
+            pve_disk_usage_bytes{job="pve-exporter",id=~"storage/.*"}
+              / pve_disk_size_bytes{job="pve-exporter",id=~"storage/.*"} > 0.90
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.id }} is over 90% full"
+
+        # PVE counts the ZFS ARC as used memory and the ARC shrinks under
+        # pressure, so the threshold sits above where ARC alone can push it.
+        - alert: PveNodeMemoryHigh
+          expr: |
+            pve_memory_usage_bytes{job="pve-exporter",id=~"node/.*"}
+              / pve_memory_size_bytes{job="pve-exporter",id=~"node/.*"} > 0.95
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.id }} memory is over 95% used"
+            description: >-
+              Includes the ZFS ARC. Check guest memory in the Proxmox via
+              Prometheus dashboard before resizing anything.
+
+    # Metrics from the infra ServiceMonitors (longhorn, cert-manager); the
+    # rules stay silent until those are scraped.
+    - name: longhorn
+      rules:
+        # longhorn_volume_robustness is one 0/1 series per state label
+        # (healthy, degraded, faulted, unknown), not a single enum value.
+        - alert: LonghornVolumeDegraded
+          expr: longhorn_volume_robustness{state="degraded"} == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Longhorn volume {{ $labels.volume }} ({{ $labels.pvc_namespace }}/{{ $labels.pvc }}) is degraded"
+            description: A replica is missing or rebuilding; check https://longhorn.example.com.
+
+        - alert: LonghornVolumeFaulted
+          expr: longhorn_volume_robustness{state="faulted"} == 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Longhorn volume {{ $labels.volume }} ({{ $labels.pvc_namespace }}/{{ $labels.pvc }}) is faulted"
+            description: No healthy replica; the workload using it cannot read or write.
+
+    - name: certificates
+      rules:
+        # cert-manager renews 30 days ahead, so under 14 days means renewal
+        # has been failing for two weeks.
+        - alert: CertificateExpiringSoon
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 14 * 86400
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Certificate {{ $labels.namespace }}/{{ $labels.name }} expires in {{ $value | humanizeDuration }}"
+            description: Renewal is failing; check the Certificate and its Order and Challenge in cert-manager.
+
+        - alert: CertificateNotReady
+          expr: certmanager_certificate_ready_status{condition="False"} == 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Certificate {{ $labels.namespace }}/{{ $labels.name }} is not Ready"
+
+    - name: talos-etcd-backup
+      rules:
+        # The nightly Semaphore job "Talos: etcd Backup" runs at 02:00
+        # Europe/Berlin; 26h leaves room for a late run.
+        - alert: EtcdBackupStale
+          expr: time() - talos_etcd_backup_newest_timestamp_seconds{job="lxc-node"} > 26 * 3600
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: Newest Talos etcd snapshot is older than 26h
+            description: >-
+              Check the Semaphore task "Talos: etcd Backup" in project
+              proxmox-infra. Newest snapshot age: {{ $value | humanizeDuration }}.
+
+        - alert: EtcdBackupMetricMissing
+          expr: absent(talos_etcd_backup_newest_timestamp_seconds{job="lxc-node"})
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: The etcd backup age metric is missing
+            description: >-
+              node_exporter on semaphore is down or the etcd-backup-age timer
+              (proxmox-infra monitoring_agent role) stopped writing its
+              textfile.
+
+        # The restricted talosconfig the backup job uses (vault key
+        # vault_talos_etcd_backup_config) expires around 2027-11-04. Renew it
+        # with `make -C ansible/talos restricted-configs`. 1822694400 is
+        # 2027-10-05T00:00Z, a month ahead.
+        - alert: TalosEtcdBackupConfigExpiring
+          expr: vector(time()) > 1822694400
+          labels:
+            severity: warning
+          annotations:
+            summary: The etcd backup talosconfig expires around 2027-11-04
+            description: >-
+              Re-issue it with make -C ansible/talos restricted-configs and
+              update vault_talos_etcd_backup_config, then move this date.

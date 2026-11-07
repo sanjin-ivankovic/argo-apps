@@ -1,0 +1,43 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+Application: Valkey (official valkey/valkey image)
+Version: {{ .Chart.AppVersion }}
+
+Connection (in-cluster):
+
+  {{ include "valkey.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+{{- if not .Values.existingSecret }}
+
+WARNING: existingSecret is not set — the server is running WITHOUT
+authentication. Set existingSecret to a secret holding the password under
+the key "{{ .Values.secretKeys.password }}".
+{{- end }}
+
+{{- if .Values.backup.enabled }}
+
+Backups: RDB snapshot on schedule "{{ .Values.backup.schedule }}", keeping
+the {{ .Values.backup.retention }} most recent on PVC
+{{ include "valkey.backupPvcName" . }}. Trigger one manually with:
+
+  kubectl -n {{ .Release.Namespace }} create job --from=cronjob/{{ include "valkey.fullname" . }}-backup backup-manual
+{{- else }}
+
+Backups are DISABLED (backup.enabled=false).
+{{- end }}
+
+Check the deployment:
+
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl logs -f deployment/{{ include "valkey.fullname" . }} -n {{ .Release.Namespace }}
+
+NOTE: this chart runs a deliberately single-node Valkey (replicaCount must
+stay 1). maxmemory-policy is left at the default `noeviction` on purpose —
+job queues and app state stored here must never be silently evicted.

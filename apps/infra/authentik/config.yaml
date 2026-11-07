@@ -1,0 +1,9 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+#
+# Wave 3 (infra) but depends on PostgreSQL (wave 4): on a cold bootstrap
+# Authentik crash-loops until the database is up, then recovers on its own.
+# The inversion is intentional — the infra band caps at 3.
+namespace: authentik
+syncWave: "3"
+createNamespace: true
