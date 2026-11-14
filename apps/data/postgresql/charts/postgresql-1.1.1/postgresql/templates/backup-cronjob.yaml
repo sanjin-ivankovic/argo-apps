@@ -1,0 +1,94 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "postgresql.fullname" . }}-backup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "postgresql.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.backup.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.backup.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: {{ .Values.backup.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "postgresql.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          {{- with .Values.priorityClassName }}
+          priorityClassName: {{ . }}
+          {{- end }}
+          {{- with .Values.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: backup
+              # Same image as the server on purpose: pg_dumpall always matches
+              # the server version, and Renovate never needs a sub-image rule.
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  ts=$(date +%Y%m%d-%H%M%S)
+                  f="/backups/pg_dumpall-${ts}.sql.gz"
+                  echo "dumping to ${f}"
+                  pg_dumpall --clean --if-exists | gzip > "${f}.partial"
+                  mv "${f}.partial" "${f}"
+                  gzip -t "${f}"
+                  echo "dump OK: $(du -h "${f}" | cut -f1)"
+                  ls -1t /backups/pg_dumpall-*.sql.gz | tail -n +{{ add (.Values.backup.retention | int) 1 }} | xargs -r rm -f
+                  echo "retained: $(ls -1 /backups/pg_dumpall-*.sql.gz | wc -l) dump(s)"
+              env:
+                - name: PGHOST
+                  value: {{ include "postgresql.fullname" . }}
+                - name: PGPORT
+                  value: {{ .Values.service.port | quote }}
+                - name: PGUSER
+                  value: postgres
+                {{- if .Values.existingSecret }}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.existingSecret }}
+                      key: {{ .Values.secretKeys.adminPassword }}
+                {{- end }}
+              {{- with .Values.containerSecurityContext }}
+              securityContext:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .Values.backup.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: {{ include "postgresql.backupPvcName" . }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

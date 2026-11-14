@@ -1,0 +1,198 @@
+---
+# ============================================================================
+# Alloy (alloy-talos release) Configuration
+# Helm Chart: alloy 1.14.1 (Grafana)
+# Purpose: Receives each Talos node's machine logs (machined, apid, kubelet,
+#          etcd, containerd and the kernel log) on 127.0.0.1 and pushes them
+#          to Loki. The nodes send them via proxmox-infra
+#          ansible/talos/patches/common.yaml.j2 (machine.logging and
+#          KmsgLogConfig).
+# ============================================================================
+
+# A separate release from the pod-log DaemonSet (values.yaml):
+# otelcol.receiver.tcplog is experimental and needs
+# --stability.level=experimental, which stays off the main shipper.
+
+crds:
+  create: false
+
+controller:
+  type: daemonset
+  priorityClassName: critical-infrastructure
+  # Talos sends to 127.0.0.1 in the host network namespace, so the receiver
+  # must live there; every node then only ever receives its own logs.
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  volumes:
+    extra:
+      - name: alloy-data
+        emptyDir: {}
+
+alloy:
+  stabilityLevel: experimental
+  # Host network: 12345 would be shared with any other host-network process;
+  # node-exporter already holds 9100.
+  listenPort: 12347
+  enableReporting: false
+  storagePath: /var/lib/alloy
+  mounts:
+    extra:
+      - name: alloy-data
+        mountPath: /var/lib/alloy
+  extraEnv:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+  resources:
+    requests:
+      cpu: 10m
+      memory: 48Mi
+    limits:
+      memory: 160Mi
+  configMap:
+    content: |
+      // Talos service logs (machine.logging, json_lines).
+      otelcol.receiver.tcplog "service" {
+        listen_address = "127.0.0.1:6050"
+        output { logs = [otelcol.exporter.loki.service.input] }
+      }
+
+      otelcol.exporter.loki "service" {
+        forward_to = [loki.process.service.receiver]
+      }
+
+      // The exporter wraps each line as {"body": "<Talos JSON>"}.
+      loki.process "service" {
+        stage.json {
+          expressions = { body = "body" }
+        }
+        stage.json {
+          source      = "body"
+          expressions = {
+            msg     = "msg",
+            service = "\"talos-service\"",
+            level   = "\"talos-level\"",
+            ts      = "\"talos-time\"",
+          }
+        }
+        stage.timestamp {
+          source = "ts"
+          format = "RFC3339Nano"
+        }
+        stage.labels {
+          values = { service = "", level = "" }
+        }
+        stage.output {
+          source = "msg"
+        }
+        // The console dashboard on every node polls machined several times a
+        // second, and machined logs each call.
+        stage.drop {
+          expression          = "match with service \"dashboard\""
+          drop_counter_reason = "talos-dashboard"
+        }
+        // Talos tags these info; the level is only in the line.
+        stage.drop {
+          expression          = "^\\S+ DEBUG "
+          drop_counter_reason = "debug"
+        }
+        // The same lines arrive on the kernel receiver below, with facility
+        // and priority labels.
+        stage.drop {
+          source              = "service"
+          value               = "kernel"
+          drop_counter_reason = "kernel-duplicate"
+        }
+        // Each audit event is five to seven records; the AVC record alone
+        // names the process, permission and target context.
+        stage.match {
+          selector            = "{service=\"auditd\"} !~ \"type=AVC\""
+          action              = "drop"
+          drop_counter_reason = "audit-non-avc"
+        }
+        stage.label_drop {
+          values = ["exporter"]
+        }
+        stage.static_labels {
+          values = { job = "talos-service" }
+        }
+        forward_to = [loki.relabel.node.receiver]
+      }
+
+      // Talos kernel log (KmsgLogConfig).
+      otelcol.receiver.tcplog "kernel" {
+        listen_address = "127.0.0.1:6051"
+        output { logs = [otelcol.exporter.loki.kernel.input] }
+      }
+
+      otelcol.exporter.loki "kernel" {
+        forward_to = [loki.process.kernel.receiver]
+      }
+
+      loki.process "kernel" {
+        stage.json {
+          expressions = { body = "body" }
+        }
+        stage.json {
+          source      = "body"
+          expressions = {
+            msg      = "msg",
+            facility = "facility",
+            level    = "priority",
+          }
+        }
+        stage.labels {
+          values = { facility = "", level = "" }
+        }
+        stage.output {
+          source = "msg"
+        }
+        stage.label_drop {
+          values = ["exporter"]
+        }
+        stage.static_labels {
+          values = { job = "talos-kernel" }
+        }
+        forward_to = [loki.relabel.node.receiver]
+      }
+
+      // Every node sends to its own receiver, so this pod's node is the source.
+      loki.relabel "node" {
+        rule {
+          target_label = "node"
+          replacement  = sys.env("NODE_NAME")
+        }
+        forward_to = [loki.write.loki.receiver]
+      }
+
+      loki.write "loki" {
+        endpoint {
+          url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }
+
+configReloader:
+  resources:
+    requests:
+      cpu: 5m
+      memory: 16Mi
+    limits:
+      memory: 32Mi
+
+serviceMonitor:
+  enabled: true

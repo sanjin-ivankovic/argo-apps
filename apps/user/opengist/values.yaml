@@ -1,0 +1,40 @@
+---
+# ============================================================================
+# OpenGist Configuration
+# Helm Chart: opengist (homelab custom chart)
+# Purpose: Git-backed snippet store for moving scripts to the work machine
+#          over plain HTTPS; metadata in the shared PostgreSQL.
+# ============================================================================
+
+priorityClassName: normal-priority
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# Gist repositories, search index and sessions. Longhorn has no backup
+# target, so this volume has no off-cluster copy.
+persistence:
+  enabled: true
+  size: 5Gi
+
+# OG_SECRET_KEY and OG_DB_URI (built from the shared PostgreSQL entry).
+existingSecret: "opengist-secret"
+
+env:
+  OG_EXTERNAL_URL: "https://gist.example.com"
+  OG_SSH_GIT_ENABLED: "disabled"
+  OG_LOG_OUTPUT: "stdout"

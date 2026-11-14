@@ -1,0 +1,87 @@
+---
+# ============================================================================
+# Obsidian Configuration
+# Helm Chart: obsidian (homelab custom chart), version pinned in kustomization.yaml
+# Purpose: Obsidian desktop streamed to the browser (linuxserver.io Selkies
+#          image) plus a single-node CouchDB for the Self-hosted LiveSync
+#          plugin.
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# A full Electron desktop plus the video encoder. The 1Gi /dev/shm memory
+# volume counts against the memory limit.
+resources:
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+  limits:
+    cpu: "2000m"
+    memory: "3Gi"
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# ============================================================================
+# Persistence
+# ============================================================================
+
+# /config: vaults, plugins and settings. Longhorn (cluster default storage
+# class) — do not set storageClass.
+persistence:
+  enabled: true
+  size: 10Gi
+
+# ============================================================================
+# Secrets & Environment
+# ============================================================================
+
+# CUSTOM_USER / PASSWORD (image basic auth) from this Secret (ExternalSecret,
+# Vault). It is the second layer behind Authentik ForwardAuth on the public
+# route and the only login on the lan route.
+existingSecret: "obsidian-auth-secret"
+
+env:
+  PUID: "1000"
+  PGID: "1000"
+  TZ: "Europe/Berlin"
+  TITLE: "Obsidian"
+  HARDEN_DESKTOP: "true"
+  DISABLE_SUDO: "true"
+
+# ============================================================================
+# CouchDB (Self-hosted LiveSync)
+# ============================================================================
+
+# The desktop syncs over the Service (obsidian-couchdb.obsidian.svc:5984);
+# other devices use couchdb.example.com on the LAN or over WireGuard.
+couchdb:
+  enabled: true
+  priorityClassName: normal-priority
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists
+  persistence:
+    enabled: true
+    size: 10Gi
+  existingSecret: "obsidian-couchdb-secret"

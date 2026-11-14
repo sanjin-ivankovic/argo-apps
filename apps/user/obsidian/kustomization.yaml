@@ -1,0 +1,18 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: obsidian
+
+helmCharts:
+  - name: obsidian
+    repo: oci://registry.example.com/example-org/helm-charts
+    version: 1.0.0
+    releaseName: obsidian
+    namespace: obsidian
+    valuesFile: values.yaml
+
+resources:
+  - ingress/ingressroute.yaml
+  - secrets/obsidian-auth-external-secret.yaml
+  - secrets/obsidian-couchdb-external-secret.yaml

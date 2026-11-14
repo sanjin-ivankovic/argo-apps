@@ -1,0 +1,32 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: pihole-1-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - lan
+  routes:
+    - kind: Rule
+      match: Host(`pihole1.example.com`)
+      services:
+        - kind: Service
+          name: pihole-1
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: pihole-2-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - lan
+  routes:
+    - kind: Rule
+      match: Host(`pihole2.example.com`)
+      services:
+        - kind: Service
+          name: pihole-2
+          port: 80

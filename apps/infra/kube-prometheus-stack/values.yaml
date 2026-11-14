@@ -1,0 +1,300 @@
+---
+# ============================================================================
+# kube-prometheus-stack Configuration
+# Helm Chart: kube-prometheus-stack 92.17.1 (prometheus-community)
+# Purpose: Cluster metrics (Prometheus), alerting to ntfy (Alertmanager +
+#          base/ntfy-alertmanager.yaml) and dashboards (Grafana).
+# ============================================================================
+
+# Keeps rendered names short and stable (kube-prometheus-stack-prometheus,
+# -alertmanager, -grafana); ingress/ingressroute.yaml targets them.
+fullnameOverride: kube-prometheus-stack
+
+workerAffinity: &workerAffinity
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+defaultRules:
+  rules:
+    # kube-proxy only serves metrics on loopback until the next upgrade-k8s
+    # renders the KubeProxyConfig from proxmox-infra's control-plane patch.
+    kubeProxy: false
+
+# ============================================================================
+# Control-plane scrape targets (Talos)
+# ============================================================================
+
+# Bound to 0.0.0.0 by proxmox-infra ansible/talos/patches/controlplane.yaml;
+# the static pods carry the `component` labels the chart selects on.
+kubeControllerManager:
+  enabled: true
+kubeScheduler:
+  enabled: true
+
+kubeProxy:
+  enabled: false
+
+# The chart ships node_exporter dashboards for AIX and macOS as well; every
+# node and LXC here is Linux, so those two would only ever be empty.
+nodeExporter:
+  operatingSystems:
+    aix:
+      enabled: false
+    darwin:
+      enabled: false
+
+# etcd is a Talos service, not a pod, so its endpoints are the control-plane
+# IPs. Since Talos 1.14 etcd serves /metrics on 2383 behind client mTLS
+# (2379 no longer does). etcd-client-cert holds a CN=prometheus client cert
+# issued by the Talos etcd CA; the server cert carries the node IPs, so no
+# serverName override is needed. The chart renders serviceMonitor.tlsConfig
+# as-is and ignores the older caFile/certFile/keyFile keys.
+kubeEtcd:
+  enabled: true
+  endpoints:
+    - 10.140.0.41
+    - 10.140.0.42
+    - 10.140.0.43
+  service:
+    enabled: true
+    port: 2383
+    targetPort: 2383
+  serviceMonitor:
+    enabled: true
+    scheme: https
+    # etcd authenticates the client certificate; no bearer token.
+    authorization: null
+    tlsConfig:
+      insecureSkipVerify: false
+      ca:
+        secret:
+          name: etcd-client-cert
+          key: ca.crt
+      cert:
+        secret:
+          name: etcd-client-cert
+          key: client.crt
+      keySecret:
+        name: etcd-client-cert
+        key: client.key
+
+# ============================================================================
+# Prometheus Operator
+# ============================================================================
+
+prometheusOperator:
+  priorityClassName: critical-infrastructure
+  affinity: *workerAffinity
+  # cert-manager issues the admission webhook certificate. The default
+  # certgen Jobs regenerate it on every install and leave hook objects behind.
+  admissionWebhooks:
+    certManager:
+      enabled: true
+    patch:
+      enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 100Mi
+    limits:
+      memory: 200Mi
+
+# ============================================================================
+# Prometheus
+# ============================================================================
+
+prometheus:
+  prometheusSpec:
+    priorityClassName: critical-infrastructure
+    affinity: *workerAffinity
+    externalUrl: https://prometheus.example.com
+    retention: 10d
+    retentionSize: 15GB
+    # Pick up ServiceMonitors, PodMonitors, Probes, ScrapeConfigs and
+    # PrometheusRules from every namespace, not only those labelled for this
+    # Helm release.
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+# ============================================================================
+# Alertmanager
+# ============================================================================
+
+alertmanager:
+  alertmanagerSpec:
+    priorityClassName: critical-infrastructure
+    affinity: *workerAffinity
+    externalUrl: https://alertmanager.example.com
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+    # Silences and the notification log survive restarts.
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+
+  # The chart default routes everything to a 'null' receiver. Watchdog fires
+  # permanently by design, so it stays on 'null'.
+  config:
+    global:
+      resolve_timeout: 5m
+    inhibit_rules:
+      - source_matchers:
+          - 'severity = critical'
+        target_matchers:
+          - 'severity =~ warning|info'
+        equal:
+          - 'namespace'
+          - 'alertname'
+      - source_matchers:
+          - 'severity = warning'
+        target_matchers:
+          - 'severity = info'
+        equal:
+          - 'namespace'
+          - 'alertname'
+      - source_matchers:
+          - 'alertname = InfoInhibitor'
+        target_matchers:
+          - 'severity = info'
+        equal:
+          - 'namespace'
+      - target_matchers:
+          - 'alertname = InfoInhibitor'
+    route:
+      group_by: ['namespace', 'alertname']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: ntfy
+      routes:
+        - receiver: 'null'
+          matchers:
+            - alertname = "Watchdog"
+        - receiver: 'null'
+          matchers:
+            - alertname = "InfoInhibitor"
+    receivers:
+      - name: 'null'
+      - name: ntfy
+        webhook_configs:
+          - url: http://ntfy-alertmanager.monitoring.svc.cluster.local:8080
+            send_resolved: true
+    templates:
+      - '/etc/alertmanager/config/*.tmpl'
+
+# ============================================================================
+# Grafana
+# ============================================================================
+
+grafana:
+  priorityClassName: normal-priority
+  affinity: *workerAffinity
+  # grafana-admin (an ExternalSecret, Vault) holds admin-user and admin-password.
+  admin:
+    existingSecret: grafana-admin
+  # Dashboards and datasources are provisioned, but service accounts and their
+  # tokens (the read-only MCP account) live in grafana.db; without a volume a
+  # pod replacement deletes them. The volume is RWO, so the old pod must stop
+  # before the new one starts: maxSurge 0. Not type Recreate: the live object
+  # keeps the API-defaulted rollingUpdate block, which server-side apply cannot
+  # remove, and Recreate next to it is rejected.
+  persistence:
+    enabled: true
+    size: 1Gi
+  # fsGroup 472 already makes the volume writable; the chown init container
+  # would run as root.
+  initChownData:
+    enabled: false
+  deploymentStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  testFramework:
+    enabled: false
+  # Logs from apps/infra/loki (cluster pods via Alloy, LXCs via the push
+  # route); queried in-cluster, no auth.
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      access: proxy
+      url: http://loki.monitoring.svc.cluster.local:3100
+      jsonData:
+        maxLines: 5000
+  grafana.ini:
+    server:
+      root_url: https://grafana.example.com
+    analytics:
+      check_for_updates: false
+      reporting_enabled: false
+    # info logs every dashboard query.
+    log:
+      level: warn
+  # Measured peaks: grafana ~380Mi, each sidecar ~80Mi.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 384Mi
+    limits:
+      memory: 768Mi
+  sidecar:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 96Mi
+      limits:
+        memory: 192Mi
+
+# ============================================================================
+# Exporters
+# ============================================================================
+
+kube-state-metrics:
+  priorityClassName: critical-infrastructure
+  affinity: *workerAffinity
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+# DaemonSet on every node; the chart default tolerates the control-plane
+# taint.
+prometheus-node-exporter:
+  priorityClassName: critical-infrastructure
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi

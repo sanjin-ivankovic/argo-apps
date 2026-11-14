@@ -1,0 +1,155 @@
+---
+# ============================================================================
+# Alloy Configuration
+# Helm Chart: alloy 1.14.1 (Grafana)
+# Purpose: DaemonSet that tails every pod's log file on its node and pushes
+#          to Loki (apps/infra/loki). The Proxmox LXCs run their own Alloy
+#          (proxmox-infra monitoring_agent role).
+# ============================================================================
+
+# The PodLogs CRD is for the Alloy operator flow, which is not used here.
+crds:
+  create: false
+
+controller:
+  type: daemonset
+  volumes:
+    extra:
+      - name: alloy-data
+        hostPath:
+          path: /var/lib/alloy
+          type: DirectoryOrCreate
+  priorityClassName: critical-infrastructure
+  # One pod per node, control planes included.
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+alloy:
+  # Containerd writes pod logs under /var/log/pods on Talos; the chart mounts
+  # the host's /var/log read-only.
+  mounts:
+    varlog: true
+    # Read positions per file. On the node, so a restarted pod resumes where
+    # it stopped instead of re-shipping (duplicating) logs.
+    extra:
+      - name: alloy-data
+        mountPath: /var/lib/alloy
+  storagePath: /var/lib/alloy/data
+  enableReporting: false
+  # Discovery is filtered to this node, so every pod only tails its own
+  # node's files.
+  extraEnv:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+  # Talos writes pod logs root:root 0640, so only root (the owner) can read
+  # them; no capability is needed for that. The image sets no user; pin root
+  # so a chart or image default cannot change it.
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    runAsNonRoot: false
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+  resources:
+    requests:
+      cpu: 20m
+      memory: 96Mi
+    limits:
+      memory: 256Mi
+  configMap:
+    content: |
+      discovery.kubernetes "pods" {
+        role = "pod"
+        selectors {
+          role  = "pod"
+          field = "spec.nodeName=" + sys.env("NODE_NAME")
+        }
+      }
+
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "app"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "node"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+          separator     = "/"
+          replacement   = "/var/log/pods/*$1/*.log"
+          target_label  = "__path__"
+        }
+      }
+
+      local.file_match "pods" {
+        path_targets = discovery.relabel.pods.output
+      }
+
+      loki.source.file "pods" {
+        targets    = local.file_match.pods.targets
+        forward_to = [loki.process.pods.receiver]
+      }
+
+      loki.process "pods" {
+        stage.cri {}
+        // Health checks and metrics scrapes that apps log as access lines:
+        // kubelet probes, authentik's own healthcheck, harbor's /api/health
+        // and core probes, Prometheus scrapes. Counted per reason in
+        // loki_process_dropped_lines_total.
+        stage.drop {
+          expression          = "kube-probe/|goauthentik\\.io/healthcheck|\"GET /api/health HTTP|\"GET / HTTP/[0-9.]+\" 200 [0-9]+ \"[^\"]*\" \"Go-http-client/|Prometheus/[0-9.]+.*/metrics|/metrics.*Prometheus/[0-9.]+"
+          drop_counter_reason = "health-check"
+        }
+        stage.drop {
+          expression          = "^\\s*$"
+          drop_counter_reason = "empty"
+        }
+        stage.static_labels {
+          values = {
+            cluster = "talos",
+            job     = "kubernetes-pods",
+          }
+        }
+        forward_to = [loki.write.loki.receiver]
+      }
+
+      loki.write "loki" {
+        endpoint {
+          url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }
+
+configReloader:
+  resources:
+    requests:
+      cpu: 5m
+      memory: 16Mi
+    limits:
+      memory: 32Mi
+
+serviceMonitor:
+  enabled: true

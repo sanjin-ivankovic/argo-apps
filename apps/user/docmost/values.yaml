@@ -1,0 +1,41 @@
+---
+# ============================================================================
+# Docmost Configuration
+# Helm Chart: docmost (homelab custom chart)
+# Purpose: Homelab operator handbook; pages in the shared PostgreSQL, queues
+#          and collaboration state in the shared Valkey (db 2).
+# ============================================================================
+
+priorityClassName: normal-priority
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# Attachments (STORAGE_DRIVER=local). Pages live in PostgreSQL. Longhorn has
+# no backup target, so this volume has no off-cluster copy.
+persistence:
+  enabled: true
+  size: 5Gi
+
+# APP_SECRET, plus DATABASE_URL and REDIS_URL built from the shared
+# PostgreSQL and Valkey entries.
+existingSecret: "docmost-secret"
+
+env:
+  APP_URL: "https://docmost.example.com"
+  STORAGE_DRIVER: "local"
+  DISABLE_TELEMETRY: "true"

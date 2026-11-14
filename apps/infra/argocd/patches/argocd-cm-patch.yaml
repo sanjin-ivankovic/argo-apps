@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  kustomize.buildOptions: --enable-helm
+
+  # API-key-only account for the read-only homelab MCP server (no UI login).
+  # Its permissions come from argocd-rbac-cm: role:readonly.
+  accounts.mcp: apiKey
+
+  # Resource exclusions - override defaults to allow Endpoints for external
+  # services
+  resource.exclusions: |
+    - apiGroups:
+      - "*"
+      kinds:
+      - ProviderConfigUsage
+      clusters:
+      - "*"

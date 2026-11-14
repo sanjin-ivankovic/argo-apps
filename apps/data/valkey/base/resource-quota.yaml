@@ -1,0 +1,25 @@
+---
+# Resource Quota for Valkey Namespace
+# Ensures cache workloads don't consume excessive cluster resources
+
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: valkey-quota
+  namespace: valkey
+spec:
+  hard:
+    # CPU limits
+    requests.cpu: "2"
+    limits.cpu: "4"
+
+    # Memory limits
+    requests.memory: "4Gi"
+    limits.memory: "8Gi"
+
+    # Storage limits
+    persistentvolumeclaims: "5"
+    requests.storage: "50Gi"
+
+    # Pod limits
+    pods: "10"

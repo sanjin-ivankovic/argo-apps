@@ -1,0 +1,9 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+# The monitoring namespace comes from base/ (it needs a Pod Security label).
+# The chart's CRDs exceed the client-side apply annotation limit, so the app
+# must sync server-side.
+namespace: monitoring
+syncWave: "3"
+createNamespace: false
+serverSideApply: true

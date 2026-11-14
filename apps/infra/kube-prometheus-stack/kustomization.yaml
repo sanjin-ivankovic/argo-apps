@@ -1,0 +1,61 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+helmCharts:
+  - name: kube-prometheus-stack
+    repo: https://prometheus-community.github.io/helm-charts
+    version: 93.2.2
+    releaseName: kube-prometheus-stack
+    namespace: monitoring
+    includeCRDs: true
+    valuesFile: values.yaml
+
+resources:
+  - base
+  - ingress/ingressroute.yaml
+  - secrets/etcd-client-cert-external-secret.yaml
+  - secrets/grafana-admin-external-secret.yaml
+  - secrets/ntfy-alertmanager-token-external-secret.yaml
+  - secrets/pve-exporter-external-secret.yaml
+
+# Extra Grafana dashboards; the sidecar loads every ConfigMap labelled
+# grafana_dashboard=1. Node Exporter Full is grafana.com dashboard 1860
+# (revision 45) and covers the LXC hosts (job lxc-node). Proxmox via
+# Prometheus is dashboard 10347 (revision 5) for the pve-exporter metrics; its
+# import-time DS_PROMETHEUS input is a datasource variable here.
+# lxc-hosts and lxc-docker-containers are local: LXC CPU comes from the
+# cAdvisor root cgroup because node_cpu_seconds_total inside an LXC overstates
+# busy time several times over, and cAdvisor names containers in `name`, which
+# the grafana.com Docker dashboards do not use.
+configMapGenerator:
+  - name: dashboard-node-exporter-full
+    files:
+      - dashboards/node-exporter-full.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"
+  - name: dashboard-proxmox-via-prometheus
+    files:
+      - dashboards/proxmox-via-prometheus.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"
+  - name: dashboard-lxc-hosts
+    files:
+      - dashboards/lxc-hosts.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"
+  - name: dashboard-lxc-docker-containers
+    files:
+      - dashboards/lxc-docker-containers.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"

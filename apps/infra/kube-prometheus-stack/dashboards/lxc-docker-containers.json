@@ -1,0 +1,572 @@
+{
+ "annotations": {
+  "list": []
+ },
+ "description": "Docker containers on the Proxmox LXCs, from cAdvisor.",
+ "editable": true,
+ "graphTooltip": 1,
+ "links": [],
+ "panels": [
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "description": "Every Docker container on the LXCs, from cAdvisor (port 9338).",
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "filterable": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Value #A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "CPU (cores)"
+       },
+       {
+        "id": "unit",
+        "value": "none"
+       },
+       {
+        "id": "decimals",
+        "value": 3
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Value #B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "Memory"
+       },
+       {
+        "id": "unit",
+        "value": "bytes"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Value #C"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "Memory limit"
+       },
+       {
+        "id": "unit",
+        "value": "bytes"
+       },
+       {
+        "id": "mappings",
+        "value": [
+         {
+          "options": {
+           "0": {
+            "text": "none"
+           }
+          },
+          "type": "value"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Value #D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "Up for"
+       },
+       {
+        "id": "unit",
+        "value": "s"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Value #E"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "Health"
+       },
+       {
+        "id": "mappings",
+        "value": [
+         {
+          "options": {
+           "-1": {
+            "color": "text",
+            "text": "no check"
+           },
+           "0": {
+            "color": "red",
+            "text": "UNHEALTHY"
+           },
+           "1": {
+            "color": "green",
+            "text": "healthy"
+           }
+          },
+          "type": "value"
+         }
+        ]
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Value #F"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "OOM kills (24h)"
+       },
+       {
+        "id": "unit",
+        "value": "none"
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "red",
+           "value": 1
+          }
+         ]
+        }
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "gridPos": {
+    "h": 12,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "id": 1,
+   "options": {
+    "cellHeight": "sm",
+    "showHeader": true,
+    "sortBy": [
+     {
+      "desc": true,
+      "displayName": "Memory"
+     }
+    ]
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "editorMode": "code",
+     "expr": "sum by (instance, name, image, container_label_com_docker_compose_project) (rate(container_cpu_usage_seconds_total{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"}[5m]))",
+     "format": "table",
+     "instant": true,
+     "legendFormat": "",
+     "range": false,
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "editorMode": "code",
+     "expr": "max by (instance, name, image, container_label_com_docker_compose_project) (container_memory_working_set_bytes{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"})",
+     "format": "table",
+     "instant": true,
+     "legendFormat": "",
+     "range": false,
+     "refId": "B"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "editorMode": "code",
+     "expr": "max by (instance, name, image, container_label_com_docker_compose_project) (container_spec_memory_limit_bytes{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"})",
+     "format": "table",
+     "instant": true,
+     "legendFormat": "",
+     "range": false,
+     "refId": "C"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "editorMode": "code",
+     "expr": "max by (instance, name, image, container_label_com_docker_compose_project) (time() - container_start_time_seconds{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"})",
+     "format": "table",
+     "instant": true,
+     "legendFormat": "",
+     "range": false,
+     "refId": "D"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "editorMode": "code",
+     "expr": "max by (instance, name, image, container_label_com_docker_compose_project) (container_health_state{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"})",
+     "format": "table",
+     "instant": true,
+     "legendFormat": "",
+     "range": false,
+     "refId": "E"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "editorMode": "code",
+     "expr": "sum by (instance, name, image, container_label_com_docker_compose_project) (increase(container_oom_events_total{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"}[24h])) and on (instance, name, image, container_label_com_docker_compose_project) max by (instance, name, image, container_label_com_docker_compose_project) (container_last_seen{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"})",
+     "format": "table",
+     "instant": true,
+     "legendFormat": "",
+     "range": false,
+     "refId": "F"
+    }
+   ],
+   "title": "Containers",
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "container_label_com_docker_compose_project": "Compose project",
+       "image": "Image",
+       "instance": "Host",
+       "name": "Container"
+      }
+     }
+    }
+   ],
+   "type": "table"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "description": "",
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 1,
+      "showPoints": "never"
+     },
+     "unit": "none"
+    },
+    "overrides": []
+   },
+   "gridPos": {
+    "h": 9,
+    "w": 12,
+    "x": 0,
+    "y": 12
+   },
+   "id": 2,
+   "options": {
+    "legend": {
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "right"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "editorMode": "code",
+     "expr": "sum by (instance, name) (rate(container_cpu_usage_seconds_total{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"}[$__rate_interval]))",
+     "instant": false,
+     "legendFormat": "{{instance}}/{{name}}",
+     "range": true,
+     "refId": "A"
+    }
+   ],
+   "title": "CPU (cores)",
+   "type": "timeseries"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "description": "",
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 1,
+      "showPoints": "never"
+     },
+     "unit": "bytes"
+    },
+    "overrides": []
+   },
+   "gridPos": {
+    "h": 9,
+    "w": 12,
+    "x": 12,
+    "y": 12
+   },
+   "id": 3,
+   "options": {
+    "legend": {
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "right"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "editorMode": "code",
+     "expr": "max by (instance, name) (container_memory_working_set_bytes{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"})",
+     "instant": false,
+     "legendFormat": "{{instance}}/{{name}}",
+     "range": true,
+     "refId": "A"
+    }
+   ],
+   "title": "Memory (working set)",
+   "type": "timeseries"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "description": "Received up, transmitted down. Containers on the host network report the LXC's whole interface.",
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "fillOpacity": 10,
+      "lineWidth": 1,
+      "showPoints": "never"
+     },
+     "unit": "Bps"
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*tx.*"
+      },
+      "properties": [
+       {
+        "id": "custom.transform",
+        "value": "negative-Y"
+       }
+      ]
+     }
+    ]
+   },
+   "gridPos": {
+    "h": 9,
+    "w": 24,
+    "x": 0,
+    "y": 21
+   },
+   "id": 4,
+   "options": {
+    "legend": {
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "right"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "editorMode": "code",
+     "expr": "sum by (instance, name) (rate(container_network_receive_bytes_total{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"}[$__rate_interval]))",
+     "instant": false,
+     "legendFormat": "{{instance}}/{{name}} rx",
+     "range": true,
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     },
+     "editorMode": "code",
+     "expr": "sum by (instance, name) (rate(container_network_transmit_bytes_total{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\",name=~\"$container\"}[$__rate_interval]))",
+     "instant": false,
+     "legendFormat": "{{instance}}/{{name}} tx",
+     "range": true,
+     "refId": "B"
+    }
+   ],
+   "title": "Network",
+   "type": "timeseries"
+  }
+ ],
+ "refresh": "1m",
+ "schemaVersion": 41,
+ "tags": [
+  "lxc",
+  "docker"
+ ],
+ "templating": {
+  "list": [
+   {
+    "current": {},
+    "hide": 0,
+    "includeAll": false,
+    "label": "Datasource",
+    "name": "datasource",
+    "options": [],
+    "query": "prometheus",
+    "refresh": 1,
+    "regex": "",
+    "type": "datasource"
+   },
+   {
+    "allValue": ".*",
+    "current": {},
+    "datasource": {
+     "type": "prometheus",
+     "uid": "${datasource}"
+    },
+    "definition": "label_values(container_last_seen{job=\"lxc-cadvisor\",name!=\"\"}, instance)",
+    "hide": 0,
+    "includeAll": true,
+    "label": "Host",
+    "multi": true,
+    "name": "host",
+    "options": [],
+    "query": {
+     "query": "label_values(container_last_seen{job=\"lxc-cadvisor\",name!=\"\"}, instance)",
+     "refId": "host-var"
+    },
+    "refresh": 2,
+    "regex": "",
+    "sort": 1,
+    "type": "query"
+   },
+   {
+    "allValue": ".*",
+    "current": {},
+    "datasource": {
+     "type": "prometheus",
+     "uid": "${datasource}"
+    },
+    "definition": "label_values(container_last_seen{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\"}, name)",
+    "hide": 0,
+    "includeAll": true,
+    "label": "Container",
+    "multi": true,
+    "name": "container",
+    "options": [],
+    "query": {
+     "query": "label_values(container_last_seen{job=\"lxc-cadvisor\",name!=\"\",instance=~\"$host\"}, name)",
+     "refId": "container-var"
+    },
+    "refresh": 2,
+    "regex": "",
+    "sort": 1,
+    "type": "query"
+   }
+  ]
+ },
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "timezone": "browser",
+ "title": "LXC Docker Containers",
+ "uid": "lxc-docker",
+ "version": 1
+}

@@ -1,0 +1,59 @@
+---
+# ============================================================================
+# PrivateBin Configuration
+# Helm Chart: privatebin 1.0.0 (homelab custom chart)
+# Purpose: Minimal, encrypted online pastebin (behind Authelia SSO).
+# ============================================================================
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+resources:
+  requests:
+    cpu: "25m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "256Mi"
+
+# ============================================================================
+# Persistence
+# ============================================================================
+
+persistence:
+  storageClass: "longhorn"
+
+# ============================================================================
+# Application Configuration
+# ============================================================================
+
+# Attachments on and a one-hour default expiry, for moving log files from the
+# work machine (longer expiries stay selectable per paste). Everything else
+# stays at PrivateBin's defaults, including the 10 MiB size limit, which fits
+# the image's 15 MB nginx and PHP request caps. [model] is mandatory once a
+# config file exists.
+config: |
+  ;<?php http_response_code(403); /*
+  [main]
+  fileupload = true
+
+  [expire]
+  default = "1hour"
+
+  [model]
+  class = Filesystem
+
+  [model_options]
+  dir = PATH "data"
