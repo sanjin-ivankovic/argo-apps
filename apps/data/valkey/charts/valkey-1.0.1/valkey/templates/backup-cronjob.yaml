@@ -1,0 +1,88 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "valkey.fullname" . }}-backup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "valkey.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.backup.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.backup.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: {{ .Values.backup.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "valkey.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          {{- with .Values.priorityClassName }}
+          priorityClassName: {{ . }}
+          {{- end }}
+          {{- with .Values.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: backup
+              # Same image as the server on purpose: valkey-cli always matches
+              # the server version, and Renovate never needs a sub-image rule.
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  ts=$(date +%Y%m%d-%H%M%S)
+                  f="/backups/valkey-${ts}.rdb"
+                  echo "snapshotting to ${f}.gz"
+                  valkey-cli -h {{ include "valkey.fullname" . }} -p {{ .Values.service.port }} --rdb "${f}"
+                  gzip "${f}"
+                  gzip -t "${f}.gz"
+                  echo "snapshot OK: $(du -h "${f}.gz" | cut -f1)"
+                  ls -1t /backups/valkey-*.rdb.gz | tail -n +{{ add (.Values.backup.retention | int) 1 }} | xargs -r rm -f
+                  echo "retained: $(ls -1 /backups/valkey-*.rdb.gz | wc -l) snapshot(s)"
+              env:
+                {{- if .Values.existingSecret }}
+                - name: REDISCLI_AUTH
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.existingSecret }}
+                      key: {{ .Values.secretKeys.password }}
+                {{- end }}
+              {{- with .Values.containerSecurityContext }}
+              securityContext:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .Values.backup.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: {{ include "valkey.backupPvcName" . }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

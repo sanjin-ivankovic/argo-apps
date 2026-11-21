@@ -1,0 +1,99 @@
+---
+# ============================================================================
+# cert-manager Configuration
+# Helm Chart: cert-manager (Jetstack)
+# Purpose: Issues + renews TLS certificates (Let's Encrypt via Cloudflare
+#          DNS01), including the *.example.com wildcard used across ingress.
+# ============================================================================
+
+# ============================================================================
+# CRDs & DNS01 Resolution
+# ============================================================================
+
+crds:
+  enabled: true
+
+# Resolve the DNS01 challenge against public resolvers — the in-cluster
+# resolver can't see the public _acme-challenge TXT records. Format is ip:port.
+dns01RecursiveNameservers: "1.1.1.1:53,1.0.0.1:53"
+dns01RecursiveNameserversOnly: true
+
+# ============================================================================
+# Global Configuration
+# ============================================================================
+
+global:
+  priorityClassName: critical-infrastructure
+
+# ============================================================================
+# Controller / Webhook / CA Injector Placement
+# ============================================================================
+
+# Requests only, sized from 7-day p95 usage: the scheduler scores a
+# container without requests as 100m CPU and 200Mi.
+resources:
+  requests:
+    cpu: 10m
+    memory: 128Mi
+
+# Controller: schedule on worker nodes.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# Webhook: worker nodes, with pod anti-affinity to spread replicas across hosts.
+webhook:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 80Mi
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - webhook
+            topologyKey: kubernetes.io/hostname
+
+# CA injector: schedule on worker nodes.
+cainjector:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 96Mi
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists
+
+# Post-install Job that waits for the webhook to answer.
+startupapicheck:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+# Scraped by kube-prometheus-stack; certmanager_certificate_expiration_*
+# covers the wildcard certificate.
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: true

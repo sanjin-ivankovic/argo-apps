@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "postgresql.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "postgresql.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount | int }}
+  selector:
+    matchLabels:
+      {{- include "postgresql.selectorLabels" . | nindent 6 }}
+  {{- with .Values.updateStrategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "postgresql.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "postgresql.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.postgresql.extraArgs }}
+          args:
+            {{- range $key, $value := . }}
+            - -c
+            - {{ printf "%s=%s" $key ($value | toString) | quote }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: PGDATA
+              value: {{ .Values.postgresql.pgData | quote }}
+            {{- with .Values.postgresql.initdbArgs }}
+            - name: POSTGRES_INITDB_ARGS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.existingSecret }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: {{ .Values.secretKeys.adminPassword }}
+            {{- end }}
+          {{- with .Values.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-h", "127.0.0.1", "-p", "5432"]
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+          {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-h", "127.0.0.1", "-p", "5432"]
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-h", "127.0.0.1", "-p", "5432"]
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+              readOnly: false
+            {{- end }}
+            {{- if .Values.shmVolume.enabled }}
+            - name: dshm
+              mountPath: /dev/shm
+            {{- end }}
+            # The only paths postgres writes outside the data volume. Mounting
+            # them keeps readOnlyRootFilesystem:true viable. Must be
+            # /run/postgresql, NOT /run — mounting /run shadows the projected
+            # serviceaccount token at /run/secrets.
+            - name: run-postgresql
+              mountPath: /run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "postgresql.pvcName" . }}
+        {{- end }}
+        {{- if .Values.shmVolume.enabled }}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.shmVolume.sizeLimit }}
+        {{- end }}
+        # Group-writable by postgres (gid 999) via the pod's fsGroup, which is
+        # what lets the unix socket be created under a read-only root.
+        - name: run-postgresql
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

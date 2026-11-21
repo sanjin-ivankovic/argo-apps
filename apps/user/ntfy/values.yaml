@@ -1,0 +1,45 @@
+---
+# ============================================================================
+# ntfy Configuration
+# Helm Chart: ntfy (homelab custom chart, version in kustomization.yaml)
+# Purpose: Push notifications for Komodo alerts, GitLab pipelines, Unraid
+#          backups (zerobyte), Alertmanager (topic alerts) and PVE/PBS
+#          job failures (topic backups).
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+# NTFY_AUTH_USERS (bcrypt) and NTFY_AUTH_TOKENS come from this Secret
+# (ExternalSecret, Vault kv/k8s/ntfy/ntfy-secret).
+existingSecret: "ntfy-secret"
+
+# env replaces the chart's env map key by key, so the chart defaults
+# (NTFY_LISTEN_HTTP, NTFY_CACHE_FILE, NTFY_AUTH_FILE) stay in effect.
+env:
+  NTFY_BASE_URL: "https://ntfy.example.com"
+  # iOS cannot receive pushes from a self-hosted server directly: ntfy sends a
+  # poll request (message ID only, no content) through ntfy.sh, and the app
+  # then fetches the message from this server.
+  NTFY_UPSTREAM_BASE_URL: "https://ntfy.sh"
+  NTFY_BEHIND_PROXY: "true"
+  NTFY_ENABLE_LOGIN: "true"
+  NTFY_AUTH_DEFAULT_ACCESS: "deny-all"
+  # maintainer is admin and reads every topic. Topics are by domain: alerts,
+  # backups, ci, deploys. Publishers are write-only to the topics they post
+  # to: a token grants full access to its user, so the ACL is the limit. mcp
+  # (homelab MCP plugin, ntfy_messages) reads the four domain topics.
+  # Every user named here must exist in NTFY_AUTH_USERS, or ntfy exits.
+  NTFY_AUTH_ACCESS: "alertmanager:alerts:wo,komodo:alerts:wo,komodo:deploys:wo,proxmox:backups:wo,zerobyte:backups:wo,gitlab:ci:wo,mcp:alerts:ro,mcp:backups:ro,mcp:ci:ro,mcp:deploys:ro"

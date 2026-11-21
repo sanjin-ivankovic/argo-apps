@@ -1,0 +1,398 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate configuration for the homelab ArgoCD GitOps cluster. User-tier apps sync on merge; infra, data and services sync by hand in ArgoCD.",
+  "dependencyDashboard": {
+    "title": "Renovate Dashboard: ArgoCD Applications",
+    "header": "Tracks dependency updates for the homelab Kubernetes cluster.\n\n**After merging**: user-tier apps (apps/user/*) sync themselves; sync infra, data and services apps by hand in the [ArgoCD UI](https://argo.example.com).\n\n---",
+    "footer": "---\n\n**Resources**: [ArgoCD UI](https://argo.example.com) | [Renovate Config](https://source.example.com/example-org/argo-apps/-/blob/main/renovate.json) | [CLAUDE.md](https://source.example.com/example-org/argo-apps/-/blob/main/.claude/CLAUDE.md)"
+  },
+  "extends": [
+    "local>homelab/renovate",
+    "local>homelab/renovate:dockerfile-args",
+    "local>homelab/renovate:ci-components",
+    "local>homelab/renovate:ci-variables",
+    "local>homelab/renovate:lane-fast({apps/user/searxng/**,.pre-commit-config.yaml})",
+    "local>homelab/renovate:lane-standard({apps/user/{stirling-pdf,privatebin,onetimesecret}/**,apps/infra/{alloy,descheduler,metrics-server,cloudflare-ddns}/**})",
+    "local>homelab/renovate:lane-careful({apps/user/{actual,docmost,docuseal,ntfy,obsidian,opengist,silverbullet}/**,apps/infra/{loki,kube-prometheus-stack}/**})",
+    "local>homelab/renovate:lane-critical({apps/infra/{argocd,cert-manager,external-secrets,longhorn,metallb,traefik,authentik,cloudflared}/**,apps/data/{postgresql,valkey}/**,apps/services/harbor/**})"
+  ],
+  "ignorePaths": [
+    "**/.git/**",
+    "**/test/**",
+    "**/tests/**",
+    ".archive/**",
+    "**/.archive/**",
+    "**/charts/**"
+  ],
+  "enabledManagers": [
+    "custom.regex",
+    "dockerfile",
+    "gitlabci",
+    "kubernetes",
+    "kustomize",
+    "pre-commit"
+  ],
+  "customManagers": [
+    {
+      "description": "Extract versions from GitHub release URLs in Kustomize resources",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/)kustomization\\.yaml$/"
+      ],
+      "matchStrings": [
+        "https://github\\.com/(?<depName>[^/]+/[^/]+)/releases/download/(?<currentValue>v?[^/]+)/.+"
+      ],
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "Extract versions from raw GitHub URLs in Kustomize resources. Uses github-releases (NOT github-tags): the only match is argoproj/argo-cd, which publishes releases, and github-tags enumerates ALL tags (argo-cd has 500+ tag pages) — that paginated lookup is what stalled this repo's Renovate run for minutes.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/)kustomization\\.yaml$/"
+      ],
+      "matchStrings": [
+        "https://raw\\.githubusercontent\\.com/(?<depName>[^/]+/[^/]+)/(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)/.+"
+      ],
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "Track ArgoCD image tag in kustomization.yaml images block",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/)kustomization\\.yaml$/"
+      ],
+      "matchStrings": [
+        "- name: quay\\.io/argoproj/argocd\\s+newTag: (?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "argoproj/argo-cd",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^(?<version>.*)$"
+    },
+    {
+      "description": "CRDs-catalog commit in .ci/docker/Dockerfile: a git-refs digest pin (branch main, 40-hex ARG), which the shared dockerfile-args regex cannot express.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.ci/docker/Dockerfile$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=git-refs\\s+depName=(?<depName>\\S+)\\s+packageName=(?<packageName>\\S+)\\s+currentValue=(?<currentValue>\\S+)\\s*\\n\\s*ARG\\s+\\w+=(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "datasourceTemplate": "git-refs"
+    }
+  ],
+  "hostRules": [
+    {
+      "description": "Harbor (registry.example.com) container registry authentication",
+      "matchHost": "registry.example.com",
+      "hostType": "docker"
+    },
+    {
+      "description": "Parallelise GitHub datasource lookups. This repo has the largest github-releases/-tags surface (kustomize + custom managers); serialised one-at-a-time requests stalled the run. matchHost must be the exact api.github.com (not github.com) and carry no hostType, per Renovate docs.",
+      "matchHost": "api.github.com",
+      "concurrentRequestLimit": 20
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "One MR stream per app: every chart or image pin in an app's kustomization.yaml groups under the app directory name. The named rules below override the group for components that bundle several sources (argocd, longhorn, traefik, cert-manager, metallb, postgresql, valkey). Soak and automerge come from the lane presets in extends.",
+      "matchFileNames": [
+        "apps/*/*/kustomization.yaml"
+      ],
+      "groupName": "{{parentDir}}",
+      "commitMessagePrefix": "chore({{parentDir}}):"
+    },
+    {
+      "description": "Plain manifests inside an app directory (the kube-prometheus-stack sidecar images under base/) get the app as commit scope. {{parentDir}} would give the subdirectory (base), so the scope is the third path segment, apps/<tier>/<app>/.",
+      "matchFileNames": [
+        "apps/*/*/**",
+        "!apps/*/*/kustomization.yaml"
+      ],
+      "commitMessagePrefix": "chore({{replace '^apps/[^/]+/([^/]+)/.*$' '$1' packageFile}}):"
+    },
+    {
+      "description": "kustomize helmCharts entries read as Helm charts in the commit and MR title (an oci:// chart is looked up through the docker datasource, which would title it a Docker tag).",
+      "matchManagers": [
+        "kustomize"
+      ],
+      "matchDepTypes": [
+        "HelmChart"
+      ],
+      "commitMessageTopic": "{{depName}} Helm chart"
+    },
+    {
+      "description": "Homelab charts from Harbor: no soak here. helm-charts soaked the image before it published the chart, and Harbor returns no release dates, so a soak here would never pass. The lane still decides what automerges; a user-tier app syncs as soon as its pin merges.",
+      "matchPackageNames": [
+        "registry.example.com/example-org/helm-charts/**"
+      ],
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "Kustomize files - Disable digest pinning for all deps in kustomization.yaml (neither helmCharts nor images newTag fields support digest syntax)",
+      "matchFileNames": [
+        "**/kustomization.yaml"
+      ],
+      "matchDatasources": [
+        "helm",
+        "docker"
+      ],
+      "pinDigests": false
+    },
+    {
+      "description": "CI Dockerfile - Build tool dependencies (helm, kustomize, kubeconform, CRDs-catalog), separate MRs per tool. Excludes docker, which is the build base handled by the dockerfile manager + the docker-ci-images group above, so it keeps its digest.",
+      "matchFileNames": [
+        ".ci/docker/Dockerfile"
+      ],
+      "matchManagers": [
+        "dockerfile",
+        "custom.regex"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch"
+      ],
+      "pinDigests": false,
+      "commitMessagePrefix": "ci({{depName}}):",
+      "labels": [
+        "ci",
+        "docker"
+      ],
+      "prPriority": 8,
+      "matchPackageNames": [
+        "!docker"
+      ]
+    },
+    {
+      "description": "ArgoCD - Self-managing GitOps controller. Groups all argo-cd update sources into one branch: the kustomize `images: newTag` (github-releases), the `raw.githubusercontent.com/argoproj/argo-cd/...` install-manifest URL (github-releases), and any helm/docker refs. All argo-cd sources use github-releases now (the raw-URL manager was moved off github-tags to avoid paginating argo-cd's 500+ tags), so github-tags is no longer needed here. Without grouping, Renovate would create a separate `renovate/argoproj-argo-cd-3.4.x` branch racing the grouped `renovate/patch-argocd-self-update` branch.",
+      "matchFileNames": [
+        "apps/infra/argocd/**/*.yaml"
+      ],
+      "matchDatasources": [
+        "helm",
+        "docker",
+        "github-releases"
+      ],
+      "matchPackageNames": [
+        "/argo-cd/",
+        "/argocd/",
+        "argoproj/argo-cd",
+        "quay.io/argoproj/argocd"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch"
+      ],
+      "pinDigests": false,
+      "groupName": "argocd-self-update",
+      "commitMessagePrefix": "chore(argocd):",
+      "labels": [
+        "argocd",
+        "gitops",
+        "critical"
+      ],
+      "prPriority": 50
+    },
+    {
+      "description": "ArgoCD - disable the built-in kustomize manager on the `images: newTag: vX.Y.Z` block. The custom.regex `Track ArgoCD image tag` manager above (depName=argoproj/argo-cd) handles this same line, and both managers want to apply the same vX.Y.Z → vX.Y.Z+1 transition into the same branch (grouped via argocd-self-update). The custom.regex commits first; the built-in kustomize manager then logs 'Cannot find replaceString' because v3.4.2 is no longer in the file. Disabling it here keeps a single source of truth for that line.",
+      "matchFileNames": [
+        "apps/infra/argocd/kustomization.yaml"
+      ],
+      "matchManagers": [
+        "kustomize"
+      ],
+      "matchPackageNames": [
+        "quay.io/argoproj/argocd"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Longhorn - Distributed storage system",
+      "matchFileNames": [
+        "apps/infra/longhorn/**/*.yaml"
+      ],
+      "matchDatasources": [
+        "helm",
+        "docker"
+      ],
+      "matchPackageNames": [
+        "/longhorn/"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch"
+      ],
+      "pinDigests": false,
+      "groupName": "longhorn-updates",
+      "commitMessagePrefix": "chore(longhorn):",
+      "labels": [
+        "longhorn",
+        "storage",
+        "critical"
+      ],
+      "prPriority": 40
+    },
+    {
+      "description": "Traefik - Ingress controller, affects entire cluster network access",
+      "matchFileNames": [
+        "apps/infra/traefik/**/*.yaml"
+      ],
+      "matchDatasources": [
+        "helm",
+        "docker"
+      ],
+      "matchPackageNames": [
+        "/traefik/"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch"
+      ],
+      "pinDigests": false,
+      "groupName": "traefik-updates",
+      "commitMessagePrefix": "chore(traefik):",
+      "labels": [
+        "traefik",
+        "ingress",
+        "critical"
+      ],
+      "prPriority": 30
+    },
+    {
+      "description": "Cert-Manager - TLS certificate automation",
+      "matchFileNames": [
+        "apps/infra/cert-manager/**/*.yaml"
+      ],
+      "matchDatasources": [
+        "helm",
+        "docker"
+      ],
+      "matchPackageNames": [
+        "/cert-manager/"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch"
+      ],
+      "pinDigests": false,
+      "groupName": "cert-manager-updates",
+      "commitMessagePrefix": "chore(cert-manager):",
+      "labels": [
+        "cert-manager",
+        "certificates",
+        "critical"
+      ],
+      "prPriority": 25
+    },
+    {
+      "description": "MetalLB - L2 load balancer for bare metal cluster",
+      "matchFileNames": [
+        "apps/infra/metallb/**"
+      ],
+      "matchDatasources": [
+        "helm"
+      ],
+      "groupName": "metallb-updates",
+      "commitMessagePrefix": "chore(metallb):",
+      "labels": [
+        "metallb",
+        "networking",
+        "critical"
+      ],
+      "prPriority": 25
+    },
+    {
+      "description": "PostgreSQL chart (vendored: the postUpgradeTask pulls the new chart into apps/data/postgresql/charts/ and removes the old copy, so the MR passes validate:apps as opened) - shared database for multiple apps. OCI helmCharts entries are extracted with the DOCKER datasource and the full registry path as package name (the old helm-datasource + bare 'postgresql' match dies silently against oci:// repos).",
+      "matchFileNames": [
+        "apps/data/postgresql/kustomization.yaml"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "registry.example.com/example-org/helm-charts/postgresql"
+      ],
+      "groupName": "postgresql-chart",
+      "postUpgradeTasks": {
+        "commands": [
+          "scripts/renovate-vendor-chart.sh apps/data/postgresql {{{packageName}}} {{{newVersion}}} {{{currentVersion}}}"
+        ],
+        "fileFilters": [
+          "apps/data/postgresql/charts/**"
+        ],
+        "executionMode": "update",
+        "installTools": {
+          "helm": {}
+        }
+      },
+      "commitMessagePrefix": "chore(postgresql):",
+      "labels": [
+        "postgresql",
+        "database",
+        "critical"
+      ],
+      "prPriority": 20
+    },
+    {
+      "description": "Valkey chart (vendored: the postUpgradeTask pulls the new chart into apps/data/valkey/charts/ and removes the old copy, so the MR passes validate:apps as opened) - shared cache/state for multiple apps. OCI helmCharts entries are extracted with the DOCKER datasource and the full registry path as package name (the old helm-datasource + bare 'valkey' match dies silently against oci:// repos).",
+      "matchFileNames": [
+        "apps/data/valkey/kustomization.yaml"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "registry.example.com/example-org/helm-charts/valkey"
+      ],
+      "groupName": "valkey-chart",
+      "postUpgradeTasks": {
+        "commands": [
+          "scripts/renovate-vendor-chart.sh apps/data/valkey {{{packageName}}} {{{newVersion}}} {{{currentVersion}}}"
+        ],
+        "fileFilters": [
+          "apps/data/valkey/charts/**"
+        ],
+        "executionMode": "update",
+        "installTools": {
+          "helm": {}
+        }
+      },
+      "commitMessagePrefix": "chore(valkey):",
+      "labels": [
+        "valkey",
+        "cache"
+      ],
+      "prPriority": 15
+    },
+    {
+      "description": "The kubernetes manager also reports each manifest's apiVersion (kubernetes-api datasource); only the image pins matter here.",
+      "matchManagers": [
+        "kubernetes"
+      ],
+      "matchDatasources": [
+        "kubernetes-api"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "CRDs-catalog moves almost daily; take it on the Monday run only. A new commit only adds or updates kubeconform schemas.",
+      "matchDepNames": [
+        "datreeio/CRDs-catalog"
+      ],
+      "schedule": [
+        "* 0-6 * * 1"
+      ],
+      "commitMessagePrefix": "ci(crds-catalog):"
+    }
+  ],
+  "prFooter": "This MR was created automatically by Renovate. Review changes carefully before merging.\n\n**After merging**: user-tier apps (apps/user/*) sync themselves; sync infra, data and services apps by hand in the [ArgoCD UI](https://argo.example.com).",
+  "kubernetes": {
+    "description": "Plain manifests whose images no chart owns: the two kube-prometheus-stack sidecar deployments. Scoped to those files so the manager does not read every rendered or hand-written manifest.",
+    "managerFilePatterns": [
+      "/^apps/infra/kube-prometheus-stack/base/(ntfy-alertmanager|pve-exporter)\\.yaml$/"
+    ]
+  }
+}

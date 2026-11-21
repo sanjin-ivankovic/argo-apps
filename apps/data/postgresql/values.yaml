@@ -1,0 +1,73 @@
+---
+# ============================================================================
+# PostgreSQL Configuration
+# Helm Chart: postgresql (homelab custom, official docker.io/library/postgres
+# image — see helm-charts charts/postgresql)
+# Purpose: Shared PostgreSQL — per-app databases for harbor, authentik,
+#          docmost, docuseal and opengist (created by the
+#          chart's PostSync hook from `databases:` below).
+# ============================================================================
+
+# Service must stay exactly `postgresql` — every consumer DSN, the database
+# hook, and the MetalLB address point at
+# postgresql.postgresql.svc.cluster.local.
+fullnameOverride: postgresql
+
+priorityClassName: high-priority-stateful
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+existingSecret: postgresql-secret
+secretKeys:
+  adminPassword: postgres-password
+
+postgresql:
+  # First-boot only. Matches the previous cluster exactly (verified via
+  # pg_database before the migration): UTF8, en_US.UTF-8 libc collation.
+  # A different locale here would silently change text sort order.
+  initdbArgs: "--encoding=UTF8 --locale=en_US.UTF-8"
+
+persistence:
+  storageClass: longhorn
+  size: 16Gi
+
+# LoadBalancer exposes Postgres for external clients (e.g. DataGrip) on a
+# static MetalLB pool IP: .65 opens the data-service block of the pool
+# (.60-.64 is ingress).
+service:
+  type: LoadBalancer
+  loadBalancerIP: "10.140.0.65"
+
+# Nightly pg_dumpall to its own PVC — the only database backup in the
+# cluster; restore procedure in docs/BACKUP-DR.md.
+backup:
+  enabled: true
+  persistence:
+    storageClass: longhorn
+    size: 20Gi
+
+# One entry per consumer: the hook creates the role and database named in
+# that Secret (an ExternalSecret in secrets/, from Vault) when missing, on
+# every sync. Passwords of existing roles are never changed; a rotation needs
+# a manual ALTER ROLE.
+databases:
+  - secretName: authentik-db-secret
+  - secretName: docmost-db-secret
+  - secretName: docuseal-db-secret
+  - secretName: harbor-db-secret
+  - secretName: opengist-db-secret

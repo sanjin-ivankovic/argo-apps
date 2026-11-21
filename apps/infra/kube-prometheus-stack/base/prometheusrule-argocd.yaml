@@ -1,0 +1,45 @@
+---
+# ArgoCD app health and sync, delivered through the ntfy bridge like every
+# other alert. Infra, data and services apps sync by hand, so OutOfSync alone
+# is expected there and only auto-sync apps alert on it.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-argocd
+spec:
+  groups:
+    - name: argocd
+      rules:
+        - alert: ArgoAppUnhealthy
+          expr: argocd_app_info{health_status!~"Healthy|Progressing"} == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD app {{ $labels.name }} is {{ $labels.health_status }}"
+            description: >-
+              Check the resource tree and events of the app in ArgoCD
+              (cluster-troubleshooting). An app parked with replicaCount 0
+              reports Healthy, so it does not trigger this.
+
+        - alert: ArgoAppSyncFailed
+          expr: increase(argocd_app_sync_total{phase=~"Error|Failed"}[15m]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD sync of {{ $labels.name }} ended {{ $labels.phase }}"
+            description: >-
+              Read the app's last operation in ArgoCD; the message names the
+              resource that failed to apply.
+
+        - alert: ArgoAutoSyncStuck
+          expr: argocd_app_info{autosync_enabled="true", sync_status="OutOfSync"} == 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Auto-sync app {{ $labels.name }} has been OutOfSync for 30 minutes"
+            description: >-
+              Auto-sync did not converge: a failing sync, a sync window, or a
+              field the cluster rewrites (add it to ignoreDifferences in the
+              app's config.yaml).

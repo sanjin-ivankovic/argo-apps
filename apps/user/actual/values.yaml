@@ -1,0 +1,28 @@
+# ============================================================================
+# Actual Configuration
+# Helm Chart: actual (homelab custom chart)
+# Purpose: Personal budgeting (Actual Budget sync server and web client).
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# Initial sizing (no usage history yet); re-size from 7-day p95.
+resources:
+  requests:
+    cpu: "50m"
+    memory: "160Mi"
+  limits:
+    memory: "512Mi"
+
+persistence:
+  enabled: true
+  size: 2Gi

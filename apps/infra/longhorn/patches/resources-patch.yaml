@@ -1,0 +1,96 @@
+---
+# Requests for chart workloads whose values expose no resources key. Sized
+# from 7-day p95 usage; the hook Jobs run for seconds around a sync.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: longhorn-ui
+  namespace: longhorn-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: longhorn-ui
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: longhorn-driver-deployer
+  namespace: longhorn-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: longhorn-driver-deployer
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: longhorn-manager
+  namespace: longhorn-system
+spec:
+  template:
+    spec:
+      # longhorn-manager stays first: the post-upgrade hook takes the image of
+      # containers[0] as the manager image and waits forever otherwise, and a
+      # patch naming only the sidecar moves the sidecar to the front.
+      containers:
+        - name: longhorn-manager
+        - name: pre-pull-share-manager-image
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: longhorn-pre-upgrade
+  namespace: longhorn-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: longhorn-pre-upgrade
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: longhorn-post-upgrade
+  namespace: longhorn-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: longhorn-post-upgrade
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: longhorn-uninstall
+  namespace: longhorn-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: longhorn-uninstall
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi

@@ -1,0 +1,55 @@
+---
+# Placement alerts that check what the descheduler (apps/infra/descheduler)
+# is meant to repair each night. Both wait longer than one nightly window, so
+# they fire only when a run did not fix it.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-scheduling
+spec:
+  groups:
+    - name: homelab-scheduling
+      rules:
+        # Requested memory, the number the scheduler and the descheduler both
+        # balance on. The descheduler acts when a worker sits 5 points above
+        # the worker mean while another sits 5 below it.
+        - alert: WorkersUnbalanced
+          expr: |
+            max(
+              100 * sum by (node) (
+                kube_pod_container_resource_requests{resource="memory", node=~"talos-worker-.*"}
+                  * on (namespace, pod) group_left() (kube_pod_status_phase{phase="Running"} == 1)
+              ) / on (node) group_left() kube_node_status_allocatable{resource="memory"}
+            )
+            -
+            min(
+              100 * sum by (node) (
+                kube_pod_container_resource_requests{resource="memory", node=~"talos-worker-.*"}
+                  * on (namespace, pod) group_left() (kube_pod_status_phase{phase="Running"} == 1)
+              ) / on (node) group_left() kube_node_status_allocatable{resource="memory"}
+            )
+            > 20
+          for: 36h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Workers differ by {{ $value | printf \"%.0f\" }} points of requested memory"
+            description: >-
+              The 04:00 descheduler runs did not level the workers. Read the
+              last run (kubectl -n descheduler logs job/<name>), look for pods
+              without requests or a new app pinned to one node, or a worker
+              that is cordoned.
+
+        - alert: CoreDNSReplicasOnOneNode
+          expr: |
+            count(count by (node) (kube_pod_info{namespace="kube-system", created_by_kind="ReplicaSet", pod=~"coredns-.*"})) < 2
+              and on () count(kube_pod_info{namespace="kube-system", created_by_kind="ReplicaSet", pod=~"coredns-.*"}) >= 2
+          for: 26h
+          labels:
+            severity: warning
+          annotations:
+            summary: "All CoreDNS replicas run on one node"
+            description: >-
+              A reboot of that node stops cluster DNS. The 04:50
+              descheduler-system run did not split them; kubectl -n
+              kube-system rollout restart deploy/coredns spreads them now.

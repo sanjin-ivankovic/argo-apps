@@ -1,0 +1,35 @@
+# ============================================================================
+# SilverBullet Configuration
+# Helm Chart: silverbullet (homelab custom chart)
+# Purpose: Live scratchpad between the personal and the work machine.
+# ============================================================================
+
+priorityClassName: normal-priority
+
+# Schedule on any worker node.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+# Initial sizing (no usage history yet); re-size from 7-day p95.
+resources:
+  requests:
+    cpu: "25m"
+    memory: "64Mi"
+  limits:
+    memory: "256Mi"
+
+# SB_DISABLE_SERVICE_WORKER: no offline copy of the space in the browser, so
+# the managed work browser keeps no synced pages; loads and saves go straight
+# to the server. Merged with the chart defaults SB_SHELL_BACKEND=off and
+# SB_FOLDER=/data/silverbullet.
+env:
+  SB_DISABLE_SERVICE_WORKER: "1"
+
+persistence:
+  enabled: true
+  size: 1Gi

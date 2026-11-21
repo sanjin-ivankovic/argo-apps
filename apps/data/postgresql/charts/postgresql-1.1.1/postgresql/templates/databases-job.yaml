@@ -1,0 +1,133 @@
+{{- if .Values.databases }}
+{{- $keys := .Values.databaseJob.secretKeys }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "postgresql.fullname" . }}-databases
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "postgresql.labels" . | nindent 4 }}
+    app.kubernetes.io/component: databases
+  annotations:
+    # ArgoCD maps post-install/post-upgrade to PostSync: the Job runs after
+    # the server is Healthy, on every sync. before-hook-creation replaces the
+    # previous run, which is otherwise kept so its log stays readable.
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.databaseJob.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.databaseJob.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "postgresql.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: databases
+    spec:
+      restartPolicy: Never
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: databases
+          # Same image as the server, like the backup job: psql matches the
+          # server version and Renovate needs no sub-image rule.
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -uo pipefail
+              for _ in $(seq 1 60); do pg_isready -q && break; sleep 2; done
+              pg_isready -q || { echo "server not ready"; exit 1; }
+              failed=0
+              for dir in /db-secrets/*/; do
+                name=$(basename "$dir")
+                if [ ! -s "$dir/{{ $keys.database }}" ] || [ ! -s "$dir/{{ $keys.username }}" ] || [ ! -s "$dir/{{ $keys.password }}" ]; then
+                  echo "FAIL ${name}: secret missing, or lacks {{ $keys.database }}/{{ $keys.username }}/{{ $keys.password }}"
+                  failed=1
+                  continue
+                fi
+                if DB_NAME="$(cat "$dir/{{ $keys.database }}")" \
+                   DB_USER="$(cat "$dir/{{ $keys.username }}")" \
+                   DB_PASSWORD="$(cat "$dir/{{ $keys.password }}")" \
+                   psql -X -q -v ON_ERROR_STOP=1 <<'SQL'
+              \getenv db DB_NAME
+              \getenv usr DB_USER
+              \getenv pw DB_PASSWORD
+              SELECT NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'usr') AS new_role,
+                     NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db') AS new_db \gset
+              \if :new_role
+                \echo creating role :usr
+                SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'usr', :'pw') \gexec
+              \endif
+              \if :new_db
+                \echo creating database :db
+                SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'usr') \gexec
+              \else
+                SELECT format('ALTER DATABASE %I OWNER TO %I', :'db', :'usr') \gexec
+              \endif
+              SQL
+                then
+                  echo "OK ${name}"
+                else
+                  echo "FAIL ${name}"
+                  failed=1
+                fi
+              done
+              exit "$failed"
+          env:
+            - name: PGHOST
+              value: {{ include "postgresql.fullname" . }}
+            - name: PGPORT
+              value: {{ .Values.service.port | quote }}
+            - name: PGUSER
+              value: postgres
+            {{- if .Values.existingSecret }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: {{ .Values.secretKeys.adminPassword }}
+            {{- end }}
+          {{- with .Values.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.databaseJob.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- range $i, $db := .Values.databases }}
+            - name: db-{{ $i }}
+              mountPath: /db-secrets/{{ $db.secretName }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- range $i, $db := .Values.databases }}
+        # optional: a missing Secret becomes an empty directory, so the script
+        # reports it by name instead of the pod never starting.
+        - name: db-{{ $i }}
+          secret:
+            secretName: {{ required "databases[].secretName is required" $db.secretName }}
+            optional: true
+            defaultMode: 0440
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

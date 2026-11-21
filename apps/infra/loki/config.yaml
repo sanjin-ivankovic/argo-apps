@@ -1,0 +1,7 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+# Shares the monitoring namespace, which kube-prometheus-stack creates (with
+# its Pod Security label); sync that app first.
+namespace: monitoring
+syncWave: "3"
+createNamespace: false
