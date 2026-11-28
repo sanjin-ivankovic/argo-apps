@@ -1,0 +1,22 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: semaphore-ingressroute
+  namespace: traefik
+spec:
+  entryPoints:
+    - lan
+  routes:
+    - kind: Rule
+      match: Host(`semaphore.example.com`)
+      # No authentik-forwardauth middleware: Semaphore (Ansible runner holding
+      # R2 credentials, the Ansible Vault password and a fleet-wide SSH key)
+      # signs users in through Authentik's OIDC provider, whose admins binding
+      # is the allow-list. Semaphore 2.19 hides the password form but its API
+      # still accepts the local admin password (a strong vault value) until
+      # 2.20 enforces SEMAPHORE_PASSWORD_LOGIN_DISABLED server-side.
+      services:
+        - kind: Service
+          name: semaphore
+          port: 3000

@@ -1,0 +1,21 @@
+apiVersion: v2
+appVersion: "18.7"
+description: Single-node PostgreSQL on the official docker.io/library/postgres image,
+  with optional nightly pg_dumpall backups and per-application database provisioning
+home: https://www.postgresql.org
+keywords:
+- postgresql
+- postgres
+- database
+- sql
+kubeVersion: '>=1.19.0'
+maintainers:
+- email: maintainer@example.com
+  name: maintainer
+  url: https://source.example.com/example-org/helm-charts
+name: postgresql
+sources:
+- https://source.example.com/example-org/helm-charts/-/tree/main/charts/postgresql
+- https://github.com/docker-library/postgres
+type: application
+version: 1.1.1

@@ -1,0 +1,21 @@
+apiVersion: v2
+appVersion: 9.1.1
+description: Single-node Valkey (official valkey/valkey image) with optional nightly
+  RDB snapshot backups to a dedicated PVC
+home: https://valkey.io
+keywords:
+- valkey
+- redis
+- cache
+- key-value
+kubeVersion: '>=1.19.0'
+maintainers:
+- email: maintainer@example.com
+  name: maintainer
+  url: https://source.example.com/example-org/helm-charts
+name: valkey
+sources:
+- https://source.example.com/example-org/helm-charts/-/tree/main/charts/valkey
+- https://github.com/valkey-io/valkey-container
+type: application
+version: 1.0.1

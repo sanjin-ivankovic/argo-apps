@@ -1,0 +1,50 @@
+---
+# ============================================================================
+# External Secrets Operator
+# Helm Chart: external-secrets
+# Purpose: Syncs Kubernetes Secrets from HashiCorp Vault (kv/k8s/<ns>/<name>)
+#          through the ClusterSecretStore `vault` (cluster-secret-store.yaml).
+# ============================================================================
+
+installCRDs: true
+
+global:
+  affinity: &workerAffinity
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists
+
+# The release name makes the service account `external-secrets`, which the
+# Vault role `eso` is bound to (proxmox-infra terraform/vault).
+priorityClassName: critical-infrastructure
+
+# Requests only, sized from 7-day p95 usage: the scheduler scores a
+# container without requests as 100m CPU and 200Mi.
+resources:
+  requests:
+    cpu: 10m
+    memory: 224Mi
+
+webhook:
+  priorityClassName: critical-infrastructure
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+
+certController:
+  priorityClassName: critical-infrastructure
+  resources:
+    requests:
+      cpu: 10m
+      memory: 96Mi
+
+# The chart's default (skipIfMissing) checks for the ServiceMonitor CRD at
+# render time, which an offline kustomize render cannot see; the cluster has
+# it (kube-prometheus-stack).
+serviceMonitor:
+  enabled: true
+  renderMode: alwaysRender

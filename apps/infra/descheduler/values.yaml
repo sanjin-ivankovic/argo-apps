@@ -1,0 +1,106 @@
+---
+# ============================================================================
+# Descheduler
+# Helm Chart: descheduler (kubernetes-sigs)
+# Purpose: Evicts pods from the busiest worker during a nightly window so the
+#          scheduler re-places them, keeping the three workers level after
+#          drains, upgrades and new apps.
+# ============================================================================
+
+# ============================================================================
+# Run window
+# ============================================================================
+
+# Four runs, 04:00-04:45, after the 02:00 etcd backup and 02:30 PBS job.
+# Each run re-reads the cluster, so the balance converges in small steps.
+kind: CronJob
+schedule: "*/15 4 * * *"
+timeZone: Europe/Berlin
+activeDeadlineSeconds: 600
+successfulJobsHistoryLimit: 4
+failedJobsHistoryLimit: 2
+
+cmdOptions:
+  v: 3
+
+# ============================================================================
+# Node Placement & Resources
+# ============================================================================
+
+priorityClassName: critical-infrastructure
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+# Shared stateful services and the cluster's own plumbing never move: a
+# restart of PostgreSQL or Valkey takes every dependent app down with it.
+excludedNamespaces: &excludedNamespaces
+  - kube-system
+  - longhorn-system
+  - metallb-system
+  - postgresql
+  - traefik
+  - valkey
+
+deschedulerPolicy:
+  # Only workers are balanced. The tainted control planes would otherwise
+  # count as underutilised and pull the mean down.
+  nodeSelector: node-role.kubernetes.io/worker
+  maxNoOfPodsToEvictPerNode: 5
+  profiles:
+    - name: balance-workers
+      pluginConfig:
+        - name: DefaultEvictor
+          args:
+            nodeFit: true
+            # Pods with an emptyDir are evictable. Pods with a Longhorn PVC
+            # are too: PodsWithPVC is deliberately not in extraEnabled.
+            podProtections:
+              defaultDisabled:
+                - PodsWithLocalStorage
+        - name: LowNodeUtilization
+          args:
+            # Deviation from the worker mean of requested memory. A node is
+            # underutilised only when below the mean on every listed resource,
+            # so listing cpu or pods would block moves on a memory imbalance.
+            useDeviationThresholds: true
+            thresholds:
+              memory: 5
+            targetThresholds:
+              memory: 5
+            evictableNamespaces:
+              exclude: *excludedNamespaces
+        - name: RemoveDuplicates
+          args:
+            namespaces:
+              exclude: *excludedNamespaces
+        - name: RemovePodsViolatingTopologySpreadConstraint
+          args:
+            constraints:
+              - DoNotSchedule
+              - ScheduleAnyway
+            namespaces:
+              exclude: *excludedNamespaces
+      plugins:
+        balance:
+          enabled:
+            - LowNodeUtilization
+            - RemoveDuplicates
+            - RemovePodsViolatingTopologySpreadConstraint

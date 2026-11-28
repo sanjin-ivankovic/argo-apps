@@ -1,0 +1,62 @@
+---
+# ============================================================================
+# Descheduler, release descheduler-system
+# Helm Chart: descheduler (kubernetes-sigs)
+# Purpose: Splits replicas of one kube-system workload that ended up on the
+#          same node, control planes included. CoreDNS runs two replicas with
+#          only preferred anti-affinity, so a drained control plane can leave
+#          both on one node and a reboot of that node stops cluster DNS.
+# ============================================================================
+
+kind: CronJob
+schedule: "50 4 * * *"
+timeZone: Europe/Berlin
+activeDeadlineSeconds: 300
+successfulJobsHistoryLimit: 2
+failedJobsHistoryLimit: 2
+
+cmdOptions:
+  v: 3
+
+priorityClassName: critical-infrastructure
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: Exists
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+deschedulerPolicy:
+  # No nodeSelector: CoreDNS runs on the control planes.
+  maxNoOfPodsToEvictPerNode: 1
+  profiles:
+    - name: split-system-duplicates
+      pluginConfig:
+        - name: DefaultEvictor
+          args:
+            nodeFit: true
+            # CoreDNS runs as system-cluster-critical. DaemonSet and static
+            # pods stay protected, so in kube-system this reaches only
+            # multi-replica Deployments.
+            podProtections:
+              defaultDisabled:
+                - SystemCriticalPods
+        - name: RemoveDuplicates
+          args:
+            namespaces:
+              include:
+                - kube-system
+      plugins:
+        balance:
+          enabled:
+            - RemoveDuplicates

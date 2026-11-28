@@ -1,0 +1,16 @@
+---
+# Exceptions to the homelab repo standard (ci-components
+# docs/REPO-STANDARD.md), checked by the lint:repo-standard job. Each reason
+# starts with accepted:, fix: or investigate:. An entry whose rule passes
+# fails the check, so remove it with the fix.
+exceptions:
+  readme-headings: >-
+    accepted: the README is the GitHub portfolio page; the emoji headings
+    are its style
+  config-drift:
+    .config/.yamllint: >-
+      accepted: ignores sealed secrets, vendored charts, Helm values and
+      a list of generated or templated manifests
+    .config/.markdownlint-cli2.jsonc: >-
+      accepted: also ignores .archive/ and generated sanitize and
+      coverage reports, and lints .claude/CLAUDE.md

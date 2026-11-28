@@ -1,0 +1,20 @@
+---
+# Harbor portal + docker registry v2 API (both served by harbor-core), LAN-only
+# on the lan entrypoint. Harbor handles authentication itself (built-in admin +
+# robot accounts); no Traefik ForwardAuth gate here. registry.example.com is
+# the primary endpoint (CI reads it as $HARBOR_HOST from the GitLab Harbor
+# integration); registry.example.com matches `externalURL` in values.yaml.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: harbor-lan-ingressroute
+  namespace: harbor
+spec:
+  entryPoints:
+    - lan
+  routes:
+    - match: Host(`registry.example.com`) || Host(`registry.example.com`)
+      kind: Rule
+      services:
+        - name: harbor
+          port: 80

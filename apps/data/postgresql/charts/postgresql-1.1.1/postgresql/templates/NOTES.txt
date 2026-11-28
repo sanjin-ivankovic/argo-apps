@@ -1,0 +1,43 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+Application: PostgreSQL (official docker.io/library/postgres image)
+Version: {{ .Chart.AppVersion }}
+
+Connection (in-cluster):
+
+  {{ include "postgresql.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+{{- if not .Values.existingSecret }}
+
+WARNING: existingSecret is not set. The container has no POSTGRES_PASSWORD and
+will refuse to initialize a new data directory. Set existingSecret to a secret
+holding the superuser password under the key "{{ .Values.secretKeys.adminPassword }}".
+{{- end }}
+
+{{- if .Values.backup.enabled }}
+
+Backups: pg_dumpall on schedule "{{ .Values.backup.schedule }}", keeping the
+{{ .Values.backup.retention }} most recent dumps on PVC
+{{ include "postgresql.backupPvcName" . }}. Trigger one manually with:
+
+  kubectl -n {{ .Release.Namespace }} create job --from=cronjob/{{ include "postgresql.fullname" . }}-backup backup-manual
+{{- else }}
+
+Backups are DISABLED (backup.enabled=false).
+{{- end }}
+
+Check the deployment:
+
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl logs -f deployment/{{ include "postgresql.fullname" . }} -n {{ .Release.Namespace }}
+
+NOTE: this chart runs a deliberately single-node PostgreSQL (replicaCount must
+stay 1). A PostgreSQL MAJOR version upgrade is a data-format migration: never
+bump the image major in place — dump, deploy fresh, restore.

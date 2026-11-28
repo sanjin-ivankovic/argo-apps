@@ -1,0 +1,6 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+# Shared Valkey cache — deployed before the services that depend on it.
+namespace: valkey
+syncWave: "4"
+createNamespace: true

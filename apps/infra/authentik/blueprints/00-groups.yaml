@@ -1,0 +1,15 @@
+# yamllint disable-file
+---
+version: 1
+metadata:
+  name: homelab-groups
+  labels:
+    blueprints.goauthentik.io/description: Groups referenced by app access bindings
+entries:
+  # The name must stay exactly `admins`: every application access binding
+  # matches on it. is_superuser stays false — authentik admin rights are
+  # granted per-user in the UI, not through this group.
+  - model: authentik_core.group
+    state: present
+    identifiers:
+      name: admins

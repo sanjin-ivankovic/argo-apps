@@ -1,0 +1,191 @@
+## Default values for Valkey
+
+## @section Image parameters
+
+## @param image.repository The Docker repository to pull the image from.
+## @param image.tag The image tag to use (with pinned digest).
+## @param image.pullPolicy The logic of image pulling.
+##
+# The backup CronJob reuses this same image so valkey-cli always matches the
+# server version AND so Renovate's primary image rule stays the only rule
+# touching this chart (a second image here would need the sub-image exclusion
+# dance documented in renovate.json).
+image:
+  repository: valkey/valkey
+  tag: "9.1.1-trixie@sha256:64e361b630ecf18dff7ca4df6a88e6eafc193687eb48cff2c7e0a293ab67d29a"
+  pullPolicy: IfNotPresent
+
+## @param nameOverride String to partially override the chart name.
+## @param fullnameOverride String to fully override the resource names.
+##
+nameOverride: ""
+fullnameOverride: ""
+
+## @section Deployment parameters
+
+## @param replicaCount The number of replicas to deploy. Must stay 1: single-node Valkey on a ReadWriteOnce volume; there is no replication support in this chart.
+## @param updateStrategy The update strategy for the deployment.
+## @param priorityClassName Kubernetes priority class for the pod.
+##
+replicaCount: 1
+# Recreate: the data directory is a ReadWriteOnce PVC and two servers must
+# never append to the same AOF — the old pod has to be gone before the new
+# one attaches.
+updateStrategy:
+  type: Recreate
+priorityClassName: ""
+
+## @section Pod spec parameters
+
+## @param resources If specified, it sets the resource requests and limits for the pod.
+## @param nodeSelector Node selector for pod placement.
+## @param affinity Pod affinity configuration.
+## @param tolerations Pod tolerations configuration.
+## @param topologySpreadConstraints Control how pods are spread across your cluster among failure-domains such as regions, zones, nodes, and other user-defined topology domains.
+##
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+  limits:
+    memory: "1Gi"
+    cpu: "500m"
+nodeSelector: {}
+affinity: {}
+tolerations: []
+topologySpreadConstraints: []
+
+## @section Security parameters
+
+## @param podSecurityContext Pod-level security context. The official image's valkey user is uid/gid 999; fsGroupChangePolicy avoids a full recursive chown on every start.
+## @param containerSecurityContext Container-level security context. readOnlyRootFilesystem is true: valkey only writes to the /data volume.
+##
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 999
+  runAsGroup: 999
+  fsGroup: 999
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  readOnlyRootFilesystem: true
+  privileged: false
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+## @section Valkey parameters
+
+## @param valkey.appendonly Whether to enable AOF persistence (RDB auto-save is disabled either way; the backup CronJob takes explicit snapshots).
+## @param valkey.disableCommands Commands to disable via rename-command (empty rename). FLUSHDB/FLUSHALL off by default: with multiple apps sharing one instance, a stray flush is cross-app data loss.
+## @param valkey.extraFlags Map of additional valkey.conf settings rendered as --key value server args; changing one rolls the pod.
+##
+# maxmemory / maxmemory-policy are deliberately NOT set: the default policy
+# is noeviction, which BullMQ-style job queues require — an eviction policy
+# here would silently destroy queue entries and any state stored by apps.
+valkey:
+  appendonly: true
+  disableCommands:
+    - FLUSHDB
+    - FLUSHALL
+  extraFlags: {}
+
+## @section Secret parameters
+
+## @param existingSecret Name of an existing secret holding the server password. Required for a real deployment; when empty the server starts UNAUTHENTICATED.
+## @param secretKeys.password Key inside existingSecret that holds the password.
+##
+existingSecret: ""
+secretKeys:
+  password: password
+
+## @section Service parameters
+
+## @param service.type The type of service to create.
+## @param service.port The port the service listens on.
+## @param service.loadBalancerIP Static IP for type LoadBalancer (e.g. a MetalLB address); omitted when empty.
+## @param service.annotations Extra annotations for the service.
+##
+service:
+  type: ClusterIP
+  port: 6379
+  loadBalancerIP: ""
+  annotations: {}
+
+## @section Persistence parameters
+
+## @param persistence.enabled Whether to enable a PVC for the data directory.
+## @param persistence.storageClass The storage class of the PVC; empty uses the cluster default.
+## @param persistence.size The requested size of the PVC.
+## @param persistence.accessModes The access modes of the PVC.
+## @param persistence.mountPath Where the volume is mounted (the image's data directory).
+##
+persistence:
+  enabled: true
+  storageClass: ""
+  size: 8Gi
+  accessModes:
+    - ReadWriteOnce
+  mountPath: /data
+
+## @section Probe parameters
+
+## @param probes.startup.enabled Whether to enable the startup probe. The budget must cover AOF replay after an unclean stop.
+## @param probes.liveness.enabled Whether to enable the liveness probe.
+## @param probes.readiness.enabled Whether to enable the readiness probe.
+##
+probes:
+  startup:
+    enabled: true
+    periodSeconds: 5
+    failureThreshold: 30
+    timeoutSeconds: 3
+  liveness:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    failureThreshold: 6
+    timeoutSeconds: 5
+  readiness:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 5
+
+## @section Backup parameters
+
+## @param backup.enabled Whether to run scheduled RDB snapshot backups to a dedicated PVC (valkey-cli --rdb over the network — also a nightly auth/connectivity canary).
+## @param backup.schedule Cron schedule for the backup job.
+## @param backup.retention Number of most recent snapshots to keep on the backup volume.
+## @param backup.activeDeadlineSeconds Hard runtime limit for one backup job.
+## @param backup.startingDeadlineSeconds How late a missed schedule may still start.
+## @param backup.successfulJobsHistoryLimit Completed backup jobs to keep.
+## @param backup.failedJobsHistoryLimit Failed backup jobs to keep.
+## @param backup.resources Resource requests and limits for the backup pod. Kept populated so namespaces with a ResourceQuota accept the pod.
+## @param backup.persistence.storageClass The storage class of the backup PVC; empty uses the cluster default.
+## @param backup.persistence.size The requested size of the backup PVC.
+## @param backup.persistence.accessModes The access modes of the backup PVC.
+##
+backup:
+  enabled: false
+  schedule: "30 3 * * *"
+  retention: 7
+  activeDeadlineSeconds: 1800
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+  persistence:
+    storageClass: ""
+    size: 5Gi
+    accessModes:
+      - ReadWriteOnce

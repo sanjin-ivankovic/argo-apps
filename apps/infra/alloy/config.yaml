@@ -1,0 +1,7 @@
+---
+# Application metadata consumed by argocd/apps-set.yaml (git files generator).
+# Shares the monitoring namespace (privileged Pod Security, created by
+# kube-prometheus-stack); Loki (apps/infra/loki) must be running first.
+namespace: monitoring
+syncWave: "3"
+createNamespace: false

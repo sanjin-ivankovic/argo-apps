@@ -1,0 +1,13 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cert-manager
+
+resources:
+  - letsencrypt-prod.yaml
+  # Staging issuer: Uncomment when testing certificate issuance to avoid
+  # Let's Encrypt rate limits
+  # Also requires uncommenting certificate-staging.yaml in
+  # traefik/certificates/kustomization.yaml
+  # - letsencrypt-staging.yaml
